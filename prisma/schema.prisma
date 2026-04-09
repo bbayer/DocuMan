@@ -1,0 +1,184 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// SQLite for development — switch to PostgreSQL by changing provider and DATABASE_URL
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Users & Auth ────────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  projects          Project[]
+  documentVersions  DocumentVersion[]
+  requirementEdits  RequirementVersion[]
+}
+
+// ─── Projects ────────────────────────────────────────────────────
+
+model Project {
+  id          String   @id @default(uuid())
+  name        String
+  description String   @default("")
+  ownerId     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  owner     User       @relation(fields: [ownerId], references: [id])
+  documents Document[]
+
+  @@index([ownerId])
+}
+
+// ─── Documents ───────────────────────────────────────────────────
+
+model Document {
+  id               String   @id @default(uuid())
+  projectId        String
+  title            String
+  type             String   @default("ORIGINAL") // ORIGINAL | DERIVATIVE
+  docCategory      String   @default("CUSTOM")   // SRS | SDD | STP | IRS | CUSTOM
+  status           String   @default("DRAFT")    // DRAFT | REVIEW | PUBLISHED
+  majorVersion     Int      @default(0)
+  minorVersion     Int      @default(1)
+  parentDocumentId String?  // null for originals, references source for derivatives
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  project        Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  parentDocument Document?        @relation("DocumentDerivatives", fields: [parentDocumentId], references: [id])
+  derivatives    Document[]       @relation("DocumentDerivatives")
+  originalFile   OriginalFile?
+  versions       DocumentVersion[]
+  requirements   Requirement[]
+
+  @@index([projectId])
+  @@index([parentDocumentId])
+}
+
+// ─── Original Uploaded Files ─────────────────────────────────────
+
+model OriginalFile {
+  id          String   @id @default(uuid())
+  documentId  String   @unique
+  fileName    String
+  mimeType    String
+  storagePath String
+  fileSize    Int
+  uploadedAt  DateTime @default(now())
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+}
+
+// ─── Document Versions (snapshots) ──────────────────────────────
+
+model DocumentVersion {
+  id                String   @id @default(uuid())
+  documentId        String
+  majorVersion      Int
+  minorVersion      Int
+  status            String   // DRAFT | REVIEW | PUBLISHED
+  changeDescription String   @default("")
+  createdById       String
+  createdAt         DateTime @default(now())
+  isCurrent         Boolean  @default(true)
+
+  document  Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  createdBy User     @relation(fields: [createdById], references: [id])
+
+  @@index([documentId])
+  @@index([createdById])
+}
+
+// ─── Requirements ────────────────────────────────────────────────
+
+model Requirement {
+  id                  String   @id @default(uuid())
+  documentId          String
+  itemNumber          String   @default("") // e.g. "3.2.1"
+  uniqueId            String   @default("") // e.g. "SRS-REQ-001"
+  category            String   @default("REQUIREMENT") // TITLE | REQUIREMENT | PARAGRAPH | NOTE
+  title               String   @default("")
+  content             String   @default("")
+  sortOrder           Int      @default(0)
+  indentLevel         Int      @default(0)
+  parentRequirementId String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  document          Document            @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  parentRequirement Requirement?        @relation("RequirementHierarchy", fields: [parentRequirementId], references: [id])
+  childRequirements Requirement[]       @relation("RequirementHierarchy")
+  versions          RequirementVersion[]
+  sourceLinks       TraceabilityLink[]  @relation("SourceRequirement")
+  targetLinks       TraceabilityLink[]  @relation("TargetRequirement")
+
+  @@index([documentId])
+  @@index([parentRequirementId])
+}
+
+// ─── Requirement Versions (granular change tracking) ─────────────
+
+model RequirementVersion {
+  id                String   @id @default(uuid())
+  requirementId     String
+  version           Int
+  content           String
+  title             String   @default("")
+  changeDescription String   @default("")
+  editedById        String
+  createdAt         DateTime @default(now())
+  isCurrent         Boolean  @default(true)
+
+  requirement Requirement @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+  editedBy    User        @relation(fields: [editedById], references: [id])
+
+  @@index([requirementId])
+  @@index([editedById])
+}
+
+// ─── Traceability Links ──────────────────────────────────────────
+
+model TraceabilityLink {
+  id                    String   @id @default(uuid())
+  sourceRequirementId   String
+  targetRequirementId   String
+  linkType              String   @default("DERIVED_FROM") // DERIVED_FROM | SATISFIES | RELATED_TO
+  isSuspect             Boolean  @default(false)
+  createdAt             DateTime @default(now())
+
+  sourceRequirement Requirement @relation("SourceRequirement", fields: [sourceRequirementId], references: [id], onDelete: Cascade)
+  targetRequirement Requirement @relation("TargetRequirement", fields: [targetRequirementId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceRequirementId, targetRequirementId])
+  @@index([sourceRequirementId])
+  @@index([targetRequirementId])
+}
+
+// ─── Document Export Templates ───────────────────────────────────
+
+model DocumentTemplate {
+  id           String   @id @default(uuid())
+  name         String
+  description  String   @default("")
+  docCategory  String   // SRS | SDD | STP | IRS | CUSTOM
+  htmlTemplate String   // Handlebars template content
+  headerConfig String   @default("{}") // JSON
+  footerConfig String   @default("{}") // JSON
+  styleConfig  String   @default("{}") // JSON
+  isBuiltIn    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}

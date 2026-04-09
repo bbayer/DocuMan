@@ -1,0 +1,43 @@
+{
+  "name": "documan",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:studio": "prisma studio",
+    "db:seed": "npx tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "next": "^15.3.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "@prisma/client": "^6.5.0",
+    "next-auth": "^5.0.0-beta.25",
+    "ai": "^4.3.0",
+    "@ai-sdk/openai-compatible": "^0.2.0",
+    "bcryptjs": "^2.4.3",
+    "zod": "^3.23.0",
+    "pdf-parse": "^1.1.1",
+    "officeparser": "^4.1.1",
+    "handlebars": "^4.7.8",
+    "puppeteer": "^24.0.0",
+    "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/pdf-parse": "^1.1.4",
+    "@types/uuid": "^10.0.0",
+    "prisma": "^6.5.0",
+    "eslint": "^9.0.0",
+    "eslint-config-next": "^15.3.0"
+  }
+}

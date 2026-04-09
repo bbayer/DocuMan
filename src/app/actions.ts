@@ -1,0 +1,256 @@
+"use server";
+
+import { prisma } from "@/lib/db";
+import { revalidatePath } from "next/cache";
+
+// ─── Project Actions ─────────────────────────────────────
+
+export async function createProject(formData: FormData) {
+  const name = formData.get("name") as string;
+  const description = (formData.get("description") as string) || "";
+
+  if (!name || name.trim().length === 0) {
+    return { error: "Project name is required" };
+  }
+
+  // TODO: get actual user ID from session
+  const user = await prisma.user.findFirst();
+  if (!user) {
+    // Create a default user for development
+    const defaultUser = await prisma.user.create({
+      data: {
+        email: "admin@documan.local",
+        name: "Admin",
+        passwordHash: "dev-mode",
+      },
+    });
+    const project = await prisma.project.create({
+      data: { name: name.trim(), description: description.trim(), ownerId: defaultUser.id },
+    });
+    revalidatePath("/dashboard");
+    revalidatePath("/dashboard/projects");
+    return { project };
+  }
+
+  const project = await prisma.project.create({
+    data: { name: name.trim(), description: description.trim(), ownerId: user.id },
+  });
+
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/projects");
+  return { project };
+}
+
+export async function deleteProject(projectId: string) {
+  await prisma.project.delete({ where: { id: projectId } });
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/projects");
+  return { success: true };
+}
+
+// ─── Document Actions ────────────────────────────────────
+
+export async function createDerivativeDocument(
+  projectId: string,
+  parentDocumentId: string,
+  title: string,
+  docCategory: string
+) {
+  const doc = await prisma.document.create({
+    data: {
+      projectId,
+      parentDocumentId,
+      title,
+      docCategory,
+      type: "DERIVATIVE",
+      status: "DRAFT",
+      majorVersion: 0,
+      minorVersion: 1,
+    },
+  });
+
+  // Copy requirements from parent and create traceability links
+  const parentReqs = await prisma.requirement.findMany({
+    where: { documentId: parentDocumentId },
+    orderBy: { sortOrder: "asc" },
+  });
+
+  for (const parentReq of parentReqs) {
+    const derivedReq = await prisma.requirement.create({
+      data: {
+        documentId: doc.id,
+        itemNumber: parentReq.itemNumber,
+        uniqueId: `${docCategory}-${parentReq.uniqueId}`,
+        category: parentReq.category,
+        title: parentReq.title,
+        content: parentReq.content,
+        sortOrder: parentReq.sortOrder,
+        indentLevel: parentReq.indentLevel,
+      },
+    });
+
+    // Create traceability link from derived → source
+    await prisma.traceabilityLink.create({
+      data: {
+        sourceRequirementId: derivedReq.id,
+        targetRequirementId: parentReq.id,
+        linkType: "DERIVED_FROM",
+      },
+    });
+  }
+
+  revalidatePath(`/dashboard/projects/${projectId}`);
+  return { document: doc };
+}
+
+export async function updateDocumentStatus(
+  documentId: string,
+  newStatus: string,
+  projectId: string
+) {
+  const doc = await prisma.document.findUnique({ where: { id: documentId } });
+  if (!doc) return { error: "Document not found" };
+
+  const validTransitions: Record<string, string[]> = {
+    DRAFT: ["REVIEW"],
+    REVIEW: ["DRAFT", "PUBLISHED"],
+    PUBLISHED: [], // Cannot change published status
+  };
+
+  if (!validTransitions[doc.status]?.includes(newStatus)) {
+    return { error: `Cannot transition from ${doc.status} to ${newStatus}` };
+  }
+
+  const updateData: Record<string, unknown> = { status: newStatus };
+
+  // If publishing, increment major version and freeze
+  if (newStatus === "PUBLISHED") {
+    updateData.majorVersion = doc.majorVersion + 1;
+    updateData.minorVersion = 0;
+
+    // Create a document version snapshot
+    const user = await prisma.user.findFirst();
+    if (user) {
+      await prisma.documentVersion.create({
+        data: {
+          documentId,
+          majorVersion: doc.majorVersion + 1,
+          minorVersion: 0,
+          status: "PUBLISHED",
+          changeDescription: `Published as v${doc.majorVersion + 1}.0`,
+          createdById: user.id,
+        },
+      });
+    }
+  }
+
+  await prisma.document.update({
+    where: { id: documentId },
+    data: updateData,
+  });
+
+  revalidatePath(`/dashboard/projects/${projectId}`);
+  revalidatePath(`/dashboard/projects/${projectId}/documents/${documentId}`);
+  return { success: true };
+}
+
+// ─── Requirement Actions ─────────────────────────────────
+
+export async function updateRequirement(
+  requirementId: string,
+  content: string,
+  title: string,
+  projectId: string,
+  documentId: string
+) {
+  const req = await prisma.requirement.findUnique({ where: { id: requirementId } });
+  if (!req) return { error: "Requirement not found" };
+
+  // Create a version record before updating
+  const user = await prisma.user.findFirst();
+  if (user) {
+    const versionCount = await prisma.requirementVersion.count({
+      where: { requirementId },
+    });
+
+    await prisma.requirementVersion.updateMany({
+      where: { requirementId, isCurrent: true },
+      data: { isCurrent: false },
+    });
+
+    await prisma.requirementVersion.create({
+      data: {
+        requirementId,
+        version: versionCount + 1,
+        content,
+        title,
+        editedById: user.id,
+        isCurrent: true,
+      },
+    });
+  }
+
+  // Update the requirement
+  await prisma.requirement.update({
+    where: { id: requirementId },
+    data: { content, title, updatedAt: new Date() },
+  });
+
+  // Mark linked requirements as suspect
+  await prisma.traceabilityLink.updateMany({
+    where: {
+      OR: [
+        { sourceRequirementId: requirementId },
+        { targetRequirementId: requirementId },
+      ],
+    },
+    data: { isSuspect: true },
+  });
+
+  // Increment document minor version
+  const doc = await prisma.document.findUnique({ where: { id: documentId } });
+  if (doc && doc.status !== "PUBLISHED") {
+    await prisma.document.update({
+      where: { id: documentId },
+      data: { minorVersion: doc.minorVersion + 1 },
+    });
+  }
+
+  revalidatePath(`/dashboard/projects/${projectId}/documents/${documentId}`);
+  return { success: true };
+}
+
+export async function addRequirement(
+  documentId: string,
+  data: {
+    itemNumber: string;
+    uniqueId: string;
+    category: string;
+    title: string;
+    content: string;
+    sortOrder: number;
+    indentLevel: number;
+    parentRequirementId?: string;
+  },
+  projectId: string
+) {
+  const req = await prisma.requirement.create({
+    data: {
+      documentId,
+      ...data,
+    },
+  });
+
+  revalidatePath(`/dashboard/projects/${projectId}/documents/${documentId}`);
+  return { requirement: req };
+}
+
+export async function deleteRequirement(
+  requirementId: string,
+  projectId: string,
+  documentId: string
+) {
+  await prisma.requirement.delete({ where: { id: requirementId } });
+  revalidatePath(`/dashboard/projects/${projectId}/documents/${documentId}`);
+  return { success: true };
+}
