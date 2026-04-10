@@ -50,57 +50,10 @@ export async function deleteProject(projectId: string) {
 
 // ─── Document Actions ────────────────────────────────────
 
-export async function createDerivativeDocument(
-  projectId: string,
-  parentDocumentId: string,
-  title: string,
-  docCategory: string
-) {
-  const doc = await prisma.document.create({
-    data: {
-      projectId,
-      parentDocumentId,
-      title,
-      docCategory,
-      type: "DERIVATIVE",
-      status: "DRAFT",
-      majorVersion: 0,
-      minorVersion: 1,
-    },
-  });
-
-  // Copy requirements from parent and create traceability links
-  const parentReqs = await prisma.requirement.findMany({
-    where: { documentId: parentDocumentId },
-    orderBy: { sortOrder: "asc" },
-  });
-
-  for (const parentReq of parentReqs) {
-    const derivedReq = await prisma.requirement.create({
-      data: {
-        documentId: doc.id,
-        itemNumber: parentReq.itemNumber,
-        uniqueId: `${docCategory}-${parentReq.uniqueId}`,
-        category: parentReq.category,
-        title: parentReq.title,
-        content: parentReq.content,
-        sortOrder: parentReq.sortOrder,
-        indentLevel: parentReq.indentLevel,
-      },
-    });
-
-    // Create traceability link from derived → source
-    await prisma.traceabilityLink.create({
-      data: {
-        sourceRequirementId: derivedReq.id,
-        targetRequirementId: parentReq.id,
-        linkType: "DERIVED_FROM",
-      },
-    });
-  }
-
+export async function deleteDocument(documentId: string, projectId: string) {
+  await prisma.document.delete({ where: { id: documentId } });
   revalidatePath(`/dashboard/projects/${projectId}`);
-  return { document: doc };
+  return { success: true };
 }
 
 export async function updateDocumentStatus(

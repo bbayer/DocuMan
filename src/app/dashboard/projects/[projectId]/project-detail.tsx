@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { createDerivativeDocument } from "@/app/actions";
 import { useRouter } from "next/navigation";
+import { deleteDocument } from "@/app/actions";
 
 interface Document {
   id: string;
@@ -33,6 +33,7 @@ const statusBadgeClass: Record<string, string> = {
 };
 
 const categoryLabels: Record<string, string> = {
+  SSS: "System/Subsystem Specification",
   SRS: "Software Requirements Specification",
   SDD: "Software Design Description",
   STP: "Software Test Plan",
@@ -51,21 +52,60 @@ export function ProjectDetail({ project }: { project: Project }) {
   const originalDocs = project.documents.filter((d) => d.type === "ORIGINAL");
   const derivativeDocs = project.documents.filter((d) => d.type === "DERIVATIVE");
 
+  const [progress, setProgress] = useState<number>(0);
+  const [statusText, setStatusText] = useState("");
+
   async function handleDerive() {
     if (!deriveFrom || !deriveTitle.trim()) return;
     setLoading(true);
-    const result = await createDerivativeDocument(
-      project.id,
-      deriveFrom,
-      deriveTitle.trim(),
-      deriveCategory
-    );
-    setLoading(false);
-    setShowDeriveModal(false);
-    if (result.document) {
-      router.push(
-        `/dashboard/projects/${project.id}/documents/${result.document.id}`
-      );
+    setProgress(0);
+    setStatusText("Starting AI derivation...");
+    
+    try {
+      const res = await fetch("/api/documents/derive", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: project.id,
+          parentDocumentId: deriveFrom,
+          title: deriveTitle.trim(),
+          docCategory: deriveCategory,
+        }),
+      });
+
+      if (!res.ok || !res.body) throw new Error("Derivation failed");
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      
+      let newDocId = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        const textChunk = decoder.decode(value, { stream: true });
+        
+        const lines = textChunk.split("\n").filter(l => l.trim().length > 0);
+        for (const line of lines) {
+          try {
+            const data = JSON.parse(line);
+            if (data.progress !== undefined) setProgress(data.progress);
+            if (data.status) setStatusText(data.status);
+            if (data.documentId) newDocId = data.documentId;
+          } catch(e) {}
+        }
+      }
+
+      setLoading(false);
+      setShowDeriveModal(false);
+      if (newDocId) {
+        router.push(
+          `/dashboard/projects/${project.id}/documents/${newDocId}`
+        );
+      }
+    } catch(e) {
+      console.error(e);
+      setLoading(false);
     }
   }
 
@@ -227,6 +267,7 @@ export function ProjectDetail({ project }: { project: Project }) {
                     );
                   }}
                 >
+                  <option value="SSS">SSS — System/Subsystem Specification</option>
                   <option value="SRS">SRS — Software Requirements Specification</option>
                   <option value="SDD">SDD — Software Design Description</option>
                   <option value="STP">STP — Software Test Plan</option>
@@ -263,7 +304,7 @@ export function ProjectDetail({ project }: { project: Project }) {
               >
                 {loading ? (
                   <>
-                    <span className="spinner" /> Generating...
+                    <span className="spinner" /> {progress}% - {statusText || "Generating..."}
                   </>
                 ) : (
                   "Generate Document"
@@ -284,14 +325,25 @@ function DocumentCard({
   doc: Document;
   projectId: string;
 }) {
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  async function handleDelete(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!confirm("Are you sure you want to delete this document?")) return;
+    setIsDeleting(true);
+    await deleteDocument(doc.id, projectId);
+    setIsDeleting(false);
+  }
+
   return (
     <Link
       href={`/dashboard/projects/${projectId}/documents/${doc.id}`}
       style={{ textDecoration: "none" }}
     >
-      <div className="card card-interactive">
+      <div className="card card-interactive" style={{ position: "relative" }}>
         <div className="flex items-center justify-between">
-          <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ flex: 1, minWidth: 0, paddingRight: "var(--space-6)" }}>
             <div className="flex items-center gap-3" style={{ marginBottom: "var(--space-1)" }}>
               <span className="card-title" style={{ marginBottom: 0 }}>
                 {doc.title}
@@ -319,18 +371,44 @@ function DocumentCard({
               <span>{new Date(doc.updatedAt).toLocaleDateString()}</span>
             </div>
           </div>
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            style={{ color: "var(--color-text-tertiary)", flexShrink: 0 }}
-          >
-            <polyline points="9 18 15 12 9 6" />
-          </svg>
+          <div className="flex items-center gap-2">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              style={{ color: "var(--color-text-tertiary)", flexShrink: 0 }}
+            >
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+          </div>
         </div>
+        <button
+          className="btn btn-ghost btn-icon btn-sm"
+          style={{
+            position: "absolute",
+            top: "var(--space-3)",
+            right: "var(--space-3)",
+            opacity: 0.5,
+          }}
+          onClick={handleDelete}
+          disabled={isDeleting}
+          title="Delete document"
+          aria-label="Delete document"
+        >
+          {isDeleting ? (
+            <span className="spinner spinner-sm" style={{ width: 14, height: 14 }} />
+          ) : (
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+              <path d="M10 11v6" /><path d="M14 11v6" />
+              <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+            </svg>
+          )}
+        </button>
       </div>
     </Link>
   );

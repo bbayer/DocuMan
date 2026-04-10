@@ -74,8 +74,21 @@ export function DocumentEditor({
   const [chatReq, setChatReq] = useState<Requirement | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [showVersions, setShowVersions] = useState<string | null>(null);
+  const [previewReq, setPreviewReq] = useState<{ uniqueId: string; title: string; content: string } | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const isEditable = doc.status !== "PUBLISHED";
+
+  const filteredRequirements = doc.requirements.filter((req) => {
+    if (!searchQuery) return true;
+    const lowerQuery = searchQuery.toLowerCase();
+    return (
+      (req.title && req.title.toLowerCase().includes(lowerQuery)) ||
+      (req.content && req.content.toLowerCase().includes(lowerQuery)) ||
+      (req.itemNumber && req.itemNumber.toLowerCase().includes(lowerQuery)) ||
+      (req.uniqueId && req.uniqueId.toLowerCase().includes(lowerQuery))
+    );
+  });
 
   async function handleSave(reqId: string) {
     await updateRequirement(reqId, editContent, editTitle, projectId, doc.id);
@@ -134,48 +147,23 @@ export function DocumentEditor({
   return (
     <div style={{ position: "relative" }}>
       {/* Header */}
-      <div className="page-header">
-        <div className="flex items-center gap-3" style={{ marginBottom: "var(--space-2)" }}>
-          <Link
-            href={`/dashboard/projects/${projectId}`}
-            className="btn btn-ghost btn-sm"
-            style={{ marginLeft: "-8px" }}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <polyline points="15 18 9 12 15 6" />
-            </svg>
-            Back
-          </Link>
-        </div>
-
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-3">
-              <h1 className="page-title" style={{ fontSize: "var(--font-size-2xl)" }}>
-                {doc.title}
-              </h1>
+      <div className="page-header" style={{ marginBottom: "var(--space-6)" }}>
+        <div className="flex items-center justify-between" style={{ marginBottom: "var(--space-4)" }}>
+          <div className="flex items-center gap-3">
+            <Link
+              href={`/dashboard/projects/${projectId}`}
+              className="btn btn-ghost btn-sm"
+              style={{ marginLeft: "-8px" }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="15 18 9 12 15 6" />
+              </svg>
+              Back
+            </Link>
+            <div className="flex items-center gap-2" style={{ marginLeft: "var(--space-2)" }}>
               <span className={statusBadge[doc.status]}>{doc.status}</span>
               {doc.docCategory !== "CUSTOM" && (
                 <span className="badge badge-requirement">{doc.docCategory}</span>
-              )}
-            </div>
-            <div className="flex items-center gap-4" style={{ marginTop: "var(--space-2)" }}>
-              <span className="text-sm text-secondary">
-                v{doc.majorVersion}.{doc.minorVersion}
-              </span>
-              <span className="text-sm text-secondary">
-                {doc.requirements.length} requirements
-              </span>
-              {doc.type === "DERIVATIVE" && doc.parentDocument && (
-                <span className="text-sm text-secondary">
-                  Derived from:{" "}
-                  <Link
-                    href={`/dashboard/projects/${projectId}/documents/${doc.parentDocument.id}`}
-                    style={{ color: "var(--color-accent)" }}
-                  >
-                    {doc.parentDocument.title}
-                  </Link>
-                </span>
               )}
             </div>
           </div>
@@ -218,6 +206,31 @@ export function DocumentEditor({
             )}
           </div>
         </div>
+
+        <div>
+          <h1 className="page-title" style={{ fontSize: "var(--font-size-2xl)", marginBottom: "var(--space-2)", lineHeight: 1.3 }}>
+            {doc.title}
+          </h1>
+          <div className="flex items-center gap-4 text-sm text-secondary flex-wrap">
+            <span>v{doc.majorVersion}.{doc.minorVersion}</span>
+            <span>·</span>
+            <span>{doc.requirements.length} requirements</span>
+            {doc.type === "DERIVATIVE" && doc.parentDocument && (
+              <>
+                <span>·</span>
+                <span>
+                  Derived from:{" "}
+                  <Link
+                    href={`/dashboard/projects/${projectId}/documents/${doc.parentDocument.id}`}
+                    style={{ color: "var(--color-accent)" }}
+                  >
+                    {doc.parentDocument.title}
+                  </Link>
+                </span>
+              </>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Derivatives section */}
@@ -244,9 +257,24 @@ export function DocumentEditor({
         </div>
       )}
 
-      {/* Add requirement button */}
-      {isEditable && (
-        <div style={{ marginBottom: "var(--space-4)" }}>
+      {/* Search and Action Bar */}
+      <div className="flex items-center justify-between gap-4" style={{ marginBottom: "var(--space-4)" }}>
+        <div className="input-group" style={{ flex: 1, maxWidth: "400px", margin: 0 }}>
+          <div style={{ position: "relative" }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "var(--color-text-tertiary)" }}>
+              <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input 
+              className="input" 
+              placeholder="Search requirements..." 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{ paddingLeft: "38px" }}
+            />
+          </div>
+        </div>
+
+        {isEditable && (
           <button
             className="btn btn-secondary btn-sm"
             onClick={() => setShowAddForm(!showAddForm)}
@@ -258,8 +286,8 @@ export function DocumentEditor({
             </svg>
             Add Requirement
           </button>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Add requirement form */}
       {showAddForm && (
@@ -305,7 +333,7 @@ export function DocumentEditor({
       {/* Requirements list */}
       <div className="card" style={{ padding: 0 }}>
         <div className="req-list">
-          {doc.requirements.map((req) => (
+          {filteredRequirements.map((req) => (
             <div key={req.id}>
               <div className={`req-row req-indent-${Math.min(req.indentLevel, 3)}`}>
                 <span className="req-item-number">{req.itemNumber}</span>
@@ -352,7 +380,8 @@ export function DocumentEditor({
                             key={link.id}
                             className={`badge ${link.isSuspect ? "badge-note" : "badge-requirement"}`}
                             title={`${link.linkType}: ${link.targetRequirement.uniqueId}`}
-                            style={{ fontSize: "10px", cursor: "help" }}
+                            style={{ fontSize: "10px", cursor: "pointer", userSelect: "none" }}
+                            onClick={() => setPreviewReq(link.targetRequirement)}
                           >
                             {link.isSuspect && "⚠ "}
                             → {link.targetRequirement.uniqueId}
@@ -363,7 +392,8 @@ export function DocumentEditor({
                             key={link.id}
                             className={`badge ${link.isSuspect ? "badge-note" : "badge-paragraph"}`}
                             title={`Derived by: ${link.sourceRequirement.uniqueId}`}
-                            style={{ fontSize: "10px", cursor: "help" }}
+                            style={{ fontSize: "10px", cursor: "pointer", userSelect: "none" }}
+                            onClick={() => setPreviewReq(link.sourceRequirement)}
                           >
                             {link.isSuspect && "⚠ "}
                             ← {link.sourceRequirement.uniqueId}
@@ -472,6 +502,33 @@ export function DocumentEditor({
         projectId={projectId}
         documentId={doc.id}
       />
+
+      {/* Requirement Preview Modal */}
+      {previewReq && (
+        <div className="modal-overlay" onClick={() => setPreviewReq(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="modal-title">{previewReq.uniqueId}</h2>
+              <p className="modal-description">Reference requirement</p>
+            </div>
+            <div className="modal-body">
+              {previewReq.title && (
+                <div style={{ fontWeight: 600, fontSize: "var(--font-size-md)", marginBottom: "var(--space-2)", color: "var(--color-text-primary)" }}>
+                  {previewReq.title}
+                </div>
+              )}
+              <div style={{ color: "var(--color-text-secondary)", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>
+                {previewReq.content}
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => setPreviewReq(null)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
