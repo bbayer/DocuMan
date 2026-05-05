@@ -34,7 +34,8 @@ export type DerivedRequirementOutput = z.infer<typeof DerivedRequirementSchema.s
  */
 export async function breakDownRequirements(
   parentChunk: { id: string; content: string; title: string }[],
-  docCategory: string
+  docCategory: string,
+  extraInstructions?: string
 ): Promise<DerivedRequirementOutput[]> {
   if (parentChunk.length === 0) return [];
 
@@ -52,6 +53,11 @@ export async function breakDownRequirements(
     systemContext += " Extract external system boundaries, protocols, and data exchange formats for an Interface Requirements Specification.";
   } else {
     systemContext += " Break down the upstream requirements into logically structured, atomic, and granular lower-level elements tailored for technical implementation.";
+  }
+
+  // Merge user-provided extra instructions into the system prompt
+  if (extraInstructions) {
+    systemContext += `\n\nAdditional Instructions (provided by the user — follow these as extra rules):\n${extraInstructions}`;
   }
 
   // Construct input representing the chunk

@@ -46,6 +46,7 @@ export function ProjectDetail({ project }: { project: Project }) {
   const [deriveFrom, setDeriveFrom] = useState<string>("");
   const [deriveCategory, setDeriveCategory] = useState("SRS");
   const [deriveTitle, setDeriveTitle] = useState("");
+  const [extraInstructions, setExtraInstructions] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
@@ -70,6 +71,7 @@ export function ProjectDetail({ project }: { project: Project }) {
           parentDocumentId: deriveFrom,
           title: deriveTitle.trim(),
           docCategory: deriveCategory,
+          extraInstructions: extraInstructions.trim() || undefined,
         }),
       });
 
@@ -287,6 +289,55 @@ export function ProjectDetail({ project }: { project: Project }) {
                   onChange={(e) => setDeriveTitle(e.target.value)}
                   placeholder="e.g. Flight Control System SRS"
                 />
+              </div>
+              <div className="input-group">
+                <label className="input-label" htmlFor="derive-extra-instructions">
+                  Extra Instructions for AI
+                  <span style={{ fontWeight: 400, color: "var(--color-text-tertiary)", marginLeft: "var(--space-2)" }}>(optional)</span>
+                </label>
+                <p style={{ fontSize: "var(--font-size-sm)", color: "var(--color-text-secondary)", marginBottom: "var(--space-2)", marginTop: 0 }}>
+                  Provide additional rules or guidelines for the AI to follow during document generation. You can type below or upload a .txt file.
+                </p>
+                <textarea
+                  className="input"
+                  id="derive-extra-instructions"
+                  value={extraInstructions}
+                  onChange={(e) => setExtraInstructions(e.target.value)}
+                  placeholder="e.g. Use passive voice. Each requirement must reference a specific subsystem. Focus on safety-critical aspects..."
+                  rows={4}
+                  style={{ resize: "vertical", minHeight: "80px", fontFamily: "inherit" }}
+                />
+                <div style={{ marginTop: "var(--space-2)" }}>
+                  <label
+                    htmlFor="derive-instructions-file"
+                    className="btn btn-ghost btn-sm"
+                    style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "var(--space-2)" }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                      <polyline points="17 8 12 3 7 8" />
+                      <line x1="12" y1="3" x2="12" y2="15" />
+                    </svg>
+                    Upload .txt file
+                  </label>
+                  <input
+                    type="file"
+                    id="derive-instructions-file"
+                    accept=".txt"
+                    style={{ display: "none" }}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = (ev) => {
+                        const text = ev.target?.result as string;
+                        setExtraInstructions((prev) => prev ? prev + "\n" + text : text);
+                      };
+                      reader.readAsText(file);
+                      e.target.value = "";
+                    }}
+                  />
+                </div>
               </div>
             </div>
             <div className="modal-footer">
