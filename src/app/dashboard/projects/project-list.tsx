@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { createProject, deleteProject } from "@/app/actions";
+import { createProject, deleteProject, updateProject } from "@/app/actions";
 
 interface Project {
   id: string;
@@ -16,6 +16,10 @@ interface Project {
 export function ProjectList({ projects }: { projects: Project[] }) {
   const [showModal, setShowModal] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [editProject, setEditProject] = useState<Project | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editLoading, setEditLoading] = useState(false);
 
   async function handleCreate(formData: FormData) {
     setLoading(true);
@@ -27,6 +31,20 @@ export function ProjectList({ projects }: { projects: Project[] }) {
   async function handleDelete(id: string, name: string) {
     if (!confirm(`Delete project "${name}" and all its documents?`)) return;
     await deleteProject(id);
+  }
+
+  function openEdit(project: Project) {
+    setEditProject(project);
+    setEditName(project.name);
+    setEditDescription(project.description);
+  }
+
+  async function handleEdit() {
+    if (!editProject || !editName.trim()) return;
+    setEditLoading(true);
+    await updateProject(editProject.id, editName, editDescription);
+    setEditLoading(false);
+    setEditProject(null);
   }
 
   return (
@@ -76,28 +94,48 @@ export function ProjectList({ projects }: { projects: Project[] }) {
                   <span>Updated {new Date(project.updatedAt).toLocaleDateString()}</span>
                 </div>
               </Link>
-              <button
-                className="btn btn-ghost btn-icon btn-sm"
+              <div
                 style={{
                   position: "absolute",
                   top: "var(--space-3)",
                   right: "var(--space-3)",
-                  opacity: 0.5,
+                  display: "flex",
+                  gap: "var(--space-1)",
                 }}
-                onClick={(e) => {
-                  e.preventDefault();
-                  handleDelete(project.id, project.name);
-                }}
-                title="Delete project"
-                id={`delete-project-${project.id}`}
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <polyline points="3 6 5 6 21 6" />
-                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                  <path d="M10 11v6" /><path d="M14 11v6" />
-                  <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-                </svg>
-              </button>
+                <button
+                  className="btn btn-ghost btn-icon btn-sm"
+                  style={{ opacity: 0.5 }}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    openEdit(project);
+                  }}
+                  title="Edit project"
+                  id={`edit-project-${project.id}`}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                  </svg>
+                </button>
+                <button
+                  className="btn btn-ghost btn-icon btn-sm"
+                  style={{ opacity: 0.5 }}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    handleDelete(project.id, project.name);
+                  }}
+                  title="Delete project"
+                  id={`delete-project-${project.id}`}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                    <path d="M10 11v6" /><path d="M14 11v6" />
+                    <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                  </svg>
+                </button>
+              </div>
             </div>
           ))}
         </div>
@@ -166,6 +204,72 @@ export function ProjectList({ projects }: { projects: Project[] }) {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Project Modal */}
+      {editProject && (
+        <div className="modal-overlay" onClick={() => setEditProject(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="modal-title">Edit Project</h2>
+              <p className="modal-description">
+                Update the project name and description.
+              </p>
+            </div>
+            <div className="modal-body">
+              <div className="input-group">
+                <label className="input-label" htmlFor="edit-project-name">
+                  Project Name *
+                </label>
+                <input
+                  className="input"
+                  id="edit-project-name"
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  placeholder="e.g. Flight Control System"
+                  autoFocus
+                />
+              </div>
+              <div className="input-group">
+                <label className="input-label" htmlFor="edit-project-description">
+                  Description
+                </label>
+                <textarea
+                  className="textarea"
+                  id="edit-project-description"
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  placeholder="Brief description of the project..."
+                  rows={3}
+                />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setEditProject(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={handleEdit}
+                disabled={editLoading || !editName.trim()}
+                id="submit-edit-project"
+              >
+                {editLoading ? (
+                  <>
+                    <span className="spinner" /> Saving...
+                  </>
+                ) : (
+                  "Save Changes"
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -135,6 +135,121 @@
   --z-toast: 80;
 }
 
+/* ─── Light Theme Overrides ──────────────────────────────── */
+[data-theme="light"] {
+  /* Color Palette */
+  --color-bg-primary: #f5f7fa;
+  --color-bg-secondary: #ffffff;
+  --color-bg-tertiary: #eef1f6;
+  --color-bg-elevated: #ffffff;
+  --color-bg-hover: #e8ecf2;
+
+  --color-surface: rgba(0, 0, 0, 0.02);
+  --color-surface-hover: rgba(0, 0, 0, 0.04);
+  --color-surface-active: rgba(0, 0, 0, 0.07);
+
+  --color-border: rgba(0, 0, 0, 0.1);
+  --color-border-hover: rgba(0, 0, 0, 0.18);
+  --color-border-focus: rgba(79, 120, 220, 0.5);
+
+  /* Text Colors */
+  --color-text-primary: #1a1d26;
+  --color-text-secondary: #5a6175;
+  --color-text-tertiary: #8c92a4;
+  --color-text-inverse: #f0f2f5;
+
+  /* Accent Colors */
+  --color-accent: #4f78dc;
+  --color-accent-hover: #3d66cc;
+  --color-accent-muted: rgba(79, 120, 220, 0.12);
+  --color-accent-gradient: linear-gradient(135deg, #4f78dc 0%, #7c5cbf 100%);
+
+  /* Semantic Colors */
+  --color-success: #16a34a;
+  --color-success-muted: rgba(22, 163, 74, 0.1);
+  --color-warning: #d97706;
+  --color-warning-muted: rgba(217, 119, 6, 0.1);
+  --color-error: #dc2626;
+  --color-error-muted: rgba(220, 38, 38, 0.1);
+  --color-info: #2563eb;
+  --color-info-muted: rgba(37, 99, 235, 0.1);
+
+  /* Status Colors */
+  --color-draft: #d97706;
+  --color-draft-bg: rgba(217, 119, 6, 0.1);
+  --color-review: #2563eb;
+  --color-review-bg: rgba(37, 99, 235, 0.1);
+  --color-published: #16a34a;
+  --color-published-bg: rgba(22, 163, 74, 0.1);
+
+  /* Category Colors */
+  --color-cat-title: #7c3aed;
+  --color-cat-title-bg: rgba(124, 58, 237, 0.08);
+  --color-cat-requirement: #4f78dc;
+  --color-cat-requirement-bg: rgba(79, 120, 220, 0.1);
+  --color-cat-paragraph: #6b7280;
+  --color-cat-paragraph-bg: rgba(107, 114, 128, 0.08);
+  --color-cat-note: #d97706;
+  --color-cat-note-bg: rgba(217, 119, 6, 0.08);
+
+  /* Shadows — lighter, softer */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 8px 30px rgba(0, 0, 0, 0.1);
+  --shadow-xl: 0 16px 50px rgba(0, 0, 0, 0.12);
+  --shadow-glow: 0 0 30px rgba(79, 120, 220, 0.1);
+  --shadow-glow-strong: 0 0 60px rgba(79, 120, 220, 0.15);
+
+  /* Glass — light mode glass */
+  --glass-bg: rgba(255, 255, 255, 0.85);
+  --glass-border: rgba(0, 0, 0, 0.08);
+  --glass-blur: 20px;
+}
+
+/* Remove radial glows in light mode */
+[data-theme="light"] body::before {
+  background:
+    radial-gradient(ellipse at 20% 20%, rgba(79, 120, 220, 0.03) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 80%, rgba(124, 58, 237, 0.02) 0%, transparent 50%);
+}
+
+/* Light mode scrollbar */
+[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.12);
+}
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+/* ─── Theme Toggle Button ────────────────────────────────── */
+.theme-toggle {
+  position: relative;
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  background: transparent;
+  border: none;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.theme-toggle:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text-primary);
+}
+
+.theme-toggle svg {
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.theme-toggle:hover svg {
+  transform: rotate(20deg) scale(1.1);
+}
+
 /* ─── Reset & Base ───────────────────────────────────────── */
 *,
 *::before,
@@ -232,12 +347,13 @@ a:hover {
 }
 
 .sidebar-header {
-  padding: var(--space-5) var(--space-5);
+  padding: 0 var(--space-5);
   border-bottom: 1px solid var(--color-border);
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  min-height: var(--topbar-height);
+  height: var(--topbar-height);
+  flex-shrink: 0;
 }
 
 .sidebar-logo {

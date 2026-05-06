@@ -48,6 +48,22 @@ export async function deleteProject(projectId: string) {
   return { success: true };
 }
 
+export async function updateProject(projectId: string, name: string, description: string) {
+  if (!name || name.trim().length === 0) {
+    return { error: "Project name is required" };
+  }
+
+  const project = await prisma.project.update({
+    where: { id: projectId },
+    data: { name: name.trim(), description: description.trim() },
+  });
+
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/projects");
+  revalidatePath(`/dashboard/projects/${projectId}`);
+  return { project };
+}
+
 // ─── Document Actions ────────────────────────────────────
 
 export async function deleteDocument(documentId: string, projectId: string) {

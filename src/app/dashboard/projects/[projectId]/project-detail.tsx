@@ -377,6 +377,18 @@ function DocumentCard({
   projectId: string;
 }) {
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportFormat, setExportFormat] = useState<"html" | "csv">("html");
+  const [exportLoading, setExportLoading] = useState(false);
+  const [exportFields, setExportFields] = useState({
+    itemNumber: true,
+    uniqueId: true,
+    category: true,
+    title: true,
+    content: true,
+    derivedReqId: true,
+    derivedReqText: true,
+  });
 
   async function handleDelete(e: React.MouseEvent) {
     e.preventDefault();
@@ -387,80 +399,357 @@ function DocumentCard({
     setIsDeleting(false);
   }
 
+  function toggleField(field: keyof typeof exportFields) {
+    setExportFields((prev) => ({ ...prev, [field]: !prev[field] }));
+  }
+
+  async function handleExport() {
+    setExportLoading(true);
+    try {
+      const res = await fetch(`/api/documents/export?documentId=${doc.id}`);
+      if (!res.ok) throw new Error("Failed to fetch export data");
+      const data = await res.json();
+
+      // Build rows from requirements with traceability data
+      const rows = data.requirements.map((req: any) => {
+        // Source links: this requirement was derived FROM targets
+        // Target links: other requirements link TO this one
+        const derivedFromLinks = req.sourceLinks
+          ?.filter((l: any) => l.linkType === "DERIVED_FROM")
+          .map((l: any) => l.targetRequirement) || [];
+        const derivedToLinks = req.targetLinks
+          ?.filter((l: any) => l.linkType === "DERIVED_FROM")
+          .map((l: any) => l.sourceRequirement) || [];
+        const allLinked = [...derivedFromLinks, ...derivedToLinks];
+
+        return {
+          itemNumber: req.itemNumber || "",
+          uniqueId: req.uniqueId || "",
+          category: req.category || "",
+          title: req.title || "",
+          content: req.content || "",
+          derivedReqId: allLinked.map((r: any) => r.uniqueId || r.id).join("; "),
+          derivedReqText: allLinked.map((r: any) => r.content || r.title).join("; "),
+        };
+      });
+
+      const fieldLabels: Record<string, string> = {
+        itemNumber: "Item Number",
+        uniqueId: "Unique ID",
+        category: "Type",
+        title: "Title",
+        content: "Content",
+        derivedReqId: "Derived Req ID",
+        derivedReqText: "Derived Req Text",
+      };
+
+      const activeFields = Object.entries(exportFields)
+        .filter(([, v]) => v)
+        .map(([k]) => k);
+
+      if (activeFields.length === 0) {
+        alert("Please select at least one field to export.");
+        setExportLoading(false);
+        return;
+      }
+
+      const fileName = `${doc.title.replace(/[^a-zA-Z0-9]/g, "_")}`;
+
+      if (exportFormat === "csv") {
+        const header = activeFields.map((f) => fieldLabels[f]).join(",");
+        const csvRows = rows.map((row: any) =>
+          activeFields
+            .map((f) => {
+              const val = String(row[f] || "").replace(/"/g, '""');
+              return `"${val}"`;
+            })
+            .join(",")
+        );
+        const csvContent = "\uFEFF" + [header, ...csvRows].join("\n");
+        downloadFile(csvContent, `${fileName}.csv`, "text/csv;charset=utf-8");
+      } else {
+        // HTML export
+        const htmlContent = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(doc.title)} — Export</title>
+  <style>
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 1200px; margin: 0 auto; padding: 32px; background: #fafafa; color: #1a1a2e; }
+    h1 { font-size: 1.5rem; border-bottom: 2px solid #e0e0e0; padding-bottom: 12px; margin-bottom: 8px; }
+    .meta { color: #666; font-size: 0.85rem; margin-bottom: 24px; }
+    table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+    th { background: #1a1a2e; color: #fff; text-align: left; padding: 10px 14px; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; }
+    td { padding: 10px 14px; border-bottom: 1px solid #eee; font-size: 0.85rem; vertical-align: top; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #f0f4ff; }
+    .footer { margin-top: 24px; font-size: 0.75rem; color: #999; text-align: center; }
+  </style>
+</head>
+<body>
+  <h1>${escapeHtml(doc.title)}</h1>
+  <div class="meta">Category: ${escapeHtml(doc.docCategory)} · Status: ${escapeHtml(doc.status)} · Version: v${doc.majorVersion}.${doc.minorVersion} · Exported: ${new Date().toLocaleString()}</div>
+  <table>
+    <thead>
+      <tr>${activeFields.map((f) => `<th>${escapeHtml(fieldLabels[f])}</th>`).join("")}</tr>
+    </thead>
+    <tbody>
+      ${rows
+        .map(
+          (row: any) =>
+            `<tr>${activeFields
+              .map((f) => `<td>${escapeHtml(String(row[f] || "—"))}</td>`)
+              .join("")}</tr>`
+        )
+        .join("\n      ")}
+    </tbody>
+  </table>
+  <div class="footer">Generated by DocuMan</div>
+</body>
+</html>`;
+        downloadFile(htmlContent, `${fileName}.html`, "text/html;charset=utf-8");
+      }
+    } catch (err) {
+      console.error("Export failed:", err);
+      alert("Export failed. Please try again.");
+    }
+    setExportLoading(false);
+    setShowExportModal(false);
+  }
+
   return (
-    <Link
-      href={`/dashboard/projects/${projectId}/documents/${doc.id}`}
-      style={{ textDecoration: "none" }}
-    >
-      <div className="card card-interactive" style={{ position: "relative" }}>
-        <div className="flex items-center justify-between">
-          <div style={{ flex: 1, minWidth: 0, paddingRight: "var(--space-6)" }}>
-            <div className="flex items-center gap-3" style={{ marginBottom: "var(--space-1)" }}>
-              <span className="card-title" style={{ marginBottom: 0 }}>
-                {doc.title}
-              </span>
-              <span className={statusBadgeClass[doc.status] || "badge"}>
-                {doc.status}
-              </span>
-              {doc.docCategory !== "CUSTOM" && (
-                <span className="badge badge-requirement">
-                  {doc.docCategory}
+    <>
+      <Link
+        href={`/dashboard/projects/${projectId}/documents/${doc.id}`}
+        style={{ textDecoration: "none" }}
+      >
+        <div className="card card-interactive" style={{ position: "relative" }}>
+          <div className="flex items-center justify-between">
+            <div style={{ flex: 1, minWidth: 0, paddingRight: "var(--space-6)" }}>
+              <div className="flex items-center gap-3" style={{ marginBottom: "var(--space-1)" }}>
+                <span className="card-title" style={{ marginBottom: 0 }}>
+                  {doc.title}
                 </span>
-              )}
+                <span className={statusBadgeClass[doc.status] || "badge"}>
+                  {doc.status}
+                </span>
+                {doc.docCategory !== "CUSTOM" && (
+                  <span className="badge badge-requirement">
+                    {doc.docCategory}
+                  </span>
+                )}
+              </div>
+              <div className="card-meta" style={{ marginTop: "var(--space-2)" }}>
+                <span>v{doc.majorVersion}.{doc.minorVersion}</span>
+                <span>·</span>
+                <span>{doc._count.requirements} requirements</span>
+                {doc.parentDocument && (
+                  <>
+                    <span>·</span>
+                    <span>Derived from: {doc.parentDocument.title}</span>
+                  </>
+                )}
+                <span>·</span>
+                <span>{new Date(doc.updatedAt).toLocaleDateString()}</span>
+              </div>
             </div>
-            <div className="card-meta" style={{ marginTop: "var(--space-2)" }}>
-              <span>v{doc.majorVersion}.{doc.minorVersion}</span>
-              <span>·</span>
-              <span>{doc._count.requirements} requirements</span>
-              {doc.parentDocument && (
-                <>
-                  <span>·</span>
-                  <span>Derived from: {doc.parentDocument.title}</span>
-                </>
-              )}
-              <span>·</span>
-              <span>{new Date(doc.updatedAt).toLocaleDateString()}</span>
+            <div className="flex items-center gap-2">
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                style={{ color: "var(--color-text-tertiary)", flexShrink: 0 }}
+              >
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              style={{ color: "var(--color-text-tertiary)", flexShrink: 0 }}
+          <div
+            style={{
+              position: "absolute",
+              top: "var(--space-3)",
+              right: "var(--space-3)",
+              display: "flex",
+              gap: "var(--space-1)",
+            }}
+          >
+            <button
+              className="btn btn-ghost btn-icon btn-sm"
+              style={{ opacity: 0.5 }}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setShowExportModal(true);
+              }}
+              title="Export document"
+              aria-label="Export document"
             >
-              <polyline points="9 18 15 12 9 6" />
-            </svg>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+            </button>
+            <button
+              className="btn btn-ghost btn-icon btn-sm"
+              style={{ opacity: 0.5 }}
+              onClick={handleDelete}
+              disabled={isDeleting}
+              title="Delete document"
+              aria-label="Delete document"
+            >
+              {isDeleting ? (
+                <span className="spinner spinner-sm" style={{ width: 14, height: 14 }} />
+              ) : (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="3 6 5 6 21 6" />
+                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                  <path d="M10 11v6" /><path d="M14 11v6" />
+                  <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                </svg>
+              )}
+            </button>
           </div>
         </div>
-        <button
-          className="btn btn-ghost btn-icon btn-sm"
-          style={{
-            position: "absolute",
-            top: "var(--space-3)",
-            right: "var(--space-3)",
-            opacity: 0.5,
-          }}
-          onClick={handleDelete}
-          disabled={isDeleting}
-          title="Delete document"
-          aria-label="Delete document"
-        >
-          {isDeleting ? (
-            <span className="spinner spinner-sm" style={{ width: 14, height: 14 }} />
-          ) : (
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <polyline points="3 6 5 6 21 6" />
-              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-              <path d="M10 11v6" /><path d="M14 11v6" />
-              <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-            </svg>
-          )}
-        </button>
-      </div>
-    </Link>
+      </Link>
+
+      {/* Export Modal */}
+      {showExportModal && (
+        <div className="modal-overlay" onClick={() => setShowExportModal(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="modal-title">Export Document</h2>
+              <p className="modal-description">
+                Export &ldquo;{doc.title}&rdquo; with selected fields and format.
+              </p>
+            </div>
+            <div className="modal-body">
+              {/* Format selection */}
+              <div className="input-group">
+                <label className="input-label">Export Format</label>
+                <div style={{ display: "flex", gap: "var(--space-2)" }}>
+                  {(["html", "csv"] as const).map((fmt) => (
+                    <button
+                      key={fmt}
+                      className={`btn btn-sm ${exportFormat === fmt ? "btn-primary" : "btn-secondary"}`}
+                      onClick={() => setExportFormat(fmt)}
+                      type="button"
+                      style={{ textTransform: "uppercase", fontWeight: 600, minWidth: 70 }}
+                    >
+                      {fmt}
+                    </button>
+                  ))}
+                  <button
+                    className="btn btn-sm btn-secondary"
+                    disabled
+                    type="button"
+                    title="Coming soon"
+                    style={{ textTransform: "uppercase", fontWeight: 600, minWidth: 70, opacity: 0.4 }}
+                  >
+                    PDF
+                  </button>
+                </div>
+              </div>
+
+              {/* Field selection */}
+              <div className="input-group" style={{ marginTop: "var(--space-4)" }}>
+                <label className="input-label">Fields to Include</label>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-2)" }}>
+                  {([
+                    { key: "itemNumber", label: "Item Number" },
+                    { key: "uniqueId", label: "Unique ID" },
+                    { key: "category", label: "Type" },
+                    { key: "title", label: "Title" },
+                    { key: "content", label: "Content" },
+                    { key: "derivedReqId", label: "Derived Req ID" },
+                    { key: "derivedReqText", label: "Derived Req Text" },
+                  ] as { key: keyof typeof exportFields; label: string }[]).map((field) => (
+                    <label
+                      key={field.key}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "var(--space-2)",
+                        padding: "var(--space-2) var(--space-3)",
+                        borderRadius: "var(--radius-md)",
+                        border: `1px solid ${exportFields[field.key] ? "var(--color-accent)" : "var(--color-border)"}`,
+                        background: exportFields[field.key]
+                          ? "color-mix(in srgb, var(--color-accent) 8%, transparent)"
+                          : "transparent",
+                        cursor: "pointer",
+                        transition: "all 0.15s ease",
+                        fontSize: "var(--font-size-sm)",
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={exportFields[field.key]}
+                        onChange={() => toggleField(field.key)}
+                        style={{ accentColor: "var(--color-accent)" }}
+                      />
+                      {field.label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button
+                className="btn btn-secondary"
+                onClick={() => setShowExportModal(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={handleExport}
+                disabled={exportLoading}
+                id="submit-export-btn"
+              >
+                {exportLoading ? (
+                  <>
+                    <span className="spinner" /> Exporting...
+                  </>
+                ) : (
+                  <>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                      <polyline points="7 10 12 15 17 10" />
+                      <line x1="12" y1="15" x2="12" y2="3" />
+                    </svg>
+                    Export {exportFormat.toUpperCase()}
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
+
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function downloadFile(content: string, filename: string, mimeType: string) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
