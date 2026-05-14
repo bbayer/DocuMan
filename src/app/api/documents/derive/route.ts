@@ -105,7 +105,7 @@ export async function POST(req: NextRequest) {
                    const dr = await prisma.requirement.create({
                       data: {
                         documentId: doc.id,
-                        itemNumber: formattedId,
+                        itemNumber: pr.itemNumber,
                         uniqueId: formattedId,
                         category: "REQUIREMENT",
                         title: pr.title,
@@ -116,19 +116,24 @@ export async function POST(req: NextRequest) {
                    });
                    await prisma.traceabilityLink.create({ data: { sourceRequirementId: dr.id, targetRequirementId: pr.id, linkType: "DERIVED_FROM" } });
                } else {
-                   for (const derivedItem of relevantDerived) {
+                   for (let di = 0; di < relevantDerived.length; di++) {
+                       const derivedItem = relevantDerived[di];
                        const formattedId = `${docCategory}-${String(globalIdIndex).padStart(3, '0')}`;
                        globalIdIndex++;
+                       // Preserve parent's item number; sub-number if multiple derived from same parent
+                       const derivedItemNumber = relevantDerived.length > 1
+                         ? `${pr.itemNumber}.${di + 1}`
+                         : pr.itemNumber;
                        const dr = await prisma.requirement.create({
                           data: {
                             documentId: doc.id,
-                            itemNumber: formattedId,
+                            itemNumber: derivedItemNumber,
                             uniqueId: formattedId,
                             category: "REQUIREMENT",
                             title: derivedItem.title,
                             content: derivedItem.content,
                             sortOrder: globalSortOrder++,
-                            indentLevel: pr.indentLevel, // Inherit parent depth
+                            indentLevel: pr.indentLevel,
                           }
                        });
                        await prisma.traceabilityLink.create({ data: { sourceRequirementId: dr.id, targetRequirementId: pr.id, linkType: "DERIVED_FROM" } });

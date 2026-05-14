@@ -386,6 +386,7 @@ function DocumentCard({
     category: true,
     title: true,
     content: true,
+    derivedReqItemNumber: true,
     derivedReqId: true,
     derivedReqText: true,
   });
@@ -428,6 +429,7 @@ function DocumentCard({
           category: req.category || "",
           title: req.title || "",
           content: req.content || "",
+          derivedReqItemNumber: allLinked.map((r: any) => r.itemNumber || "").join("; "),
           derivedReqId: allLinked.map((r: any) => r.uniqueId || r.id).join("; "),
           derivedReqText: allLinked.map((r: any) => r.content || r.title).join("; "),
         };
@@ -439,6 +441,7 @@ function DocumentCard({
         category: "Type",
         title: "Title",
         content: "Content",
+        derivedReqItemNumber: "Derived Req Item No",
         derivedReqId: "Derived Req ID",
         derivedReqText: "Derived Req Text",
       };
@@ -665,6 +668,7 @@ function DocumentCard({
                     { key: "category", label: "Type" },
                     { key: "title", label: "Title" },
                     { key: "content", label: "Content" },
+                    { key: "derivedReqItemNumber", label: "Derived Req Item No" },
                     { key: "derivedReqId", label: "Derived Req ID" },
                     { key: "derivedReqText", label: "Derived Req Text" },
                   ] as { key: keyof typeof exportFields; label: string }[]).map((field) => (
