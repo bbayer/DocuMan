@@ -72,6 +72,29 @@ export async function deleteDocument(documentId: string, projectId: string) {
   return { success: true };
 }
 
+export async function updateDocument(
+  documentId: string,
+  projectId: string,
+  data: { title?: string; docCategory?: string }
+) {
+  if (data.title !== undefined && data.title.trim().length === 0) {
+    return { error: "Document title is required" };
+  }
+
+  const updateData: Record<string, unknown> = {};
+  if (data.title !== undefined) updateData.title = data.title.trim();
+  if (data.docCategory !== undefined) updateData.docCategory = data.docCategory;
+
+  await prisma.document.update({
+    where: { id: documentId },
+    data: updateData,
+  });
+
+  revalidatePath(`/dashboard/projects/${projectId}`);
+  revalidatePath(`/dashboard/projects/${projectId}/documents/${documentId}`);
+  return { success: true };
+}
+
 export async function updateDocumentStatus(
   documentId: string,
   newStatus: string,
