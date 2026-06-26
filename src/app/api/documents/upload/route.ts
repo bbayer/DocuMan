@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { parseDocument } from "@/lib/parsers";
+import { parseDocument, parseCsvDocument } from "@/lib/parsers";
 import { extractRequirements } from "@/lib/ai/requirement-extractor";
 import { prisma } from "@/lib/db";
 import { writeFile, mkdir } from "fs/promises";
@@ -26,11 +26,12 @@ export async function POST(request: NextRequest) {
       "application/pdf",
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       "text/plain",
+      "text/csv",
     ];
     const ext = file.name.split(".").pop()?.toLowerCase();
-    if (!allowedTypes.includes(file.type) && !["pdf", "docx", "txt"].includes(ext || "")) {
+    if (!allowedTypes.includes(file.type) && !["pdf", "docx", "txt", "csv"].includes(ext || "")) {
       return NextResponse.json(
-        { error: "Unsupported file type. Use PDF, DOCX, or TXT." },
+        { error: "Unsupported file type. Use PDF, DOCX, TXT, or CSV." },
         { status: 400 }
       );
     }
@@ -45,6 +46,33 @@ export async function POST(request: NextRequest) {
     const storagePath = path.join(uploadDir, projectId, `${fileId}-${file.name}`);
     await mkdir(path.dirname(storagePath), { recursive: true });
     await writeFile(storagePath, buffer);
+
+    // ── CSV structured fast-path ─────────────────────────
+    const isCsv = file.type === "text/csv" || ext === "csv";
+    if (isCsv) {
+      const csvResult = await parseCsvDocument(buffer);
+
+      if (csvResult.isStructured) {
+        // Columns matched — return pre-mapped requirements directly
+        return NextResponse.json({
+          success: true,
+          fileId,
+          fileName: file.name,
+          mimeType: file.type || "text/csv",
+          fileSize: file.size,
+          storagePath,
+          documentTitle: csvResult.document.metadata.title || file.name,
+          requirements: csvResult.requirements.map((req, index) => ({
+            ...req,
+            sortOrder: index,
+            uniqueId: `REQ-${String(index + 1).padStart(3, "0")}`,
+          })),
+          rawTextPreview: csvResult.document.text.substring(0, 500),
+          importMode: "csv-structured",
+        });
+      }
+      // Unrecognised columns — fall through to AI extraction below
+    }
 
     // Parse document
     const parsed = await parseDocument(buffer, file.type, file.name);
