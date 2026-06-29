@@ -48,14 +48,22 @@ export async function deleteProject(projectId: string) {
   return { success: true };
 }
 
-export async function updateProject(projectId: string, name: string, description: string) {
+export async function updateProject(projectId: string, name: string, description: string, aiContext?: string) {
   if (!name || name.trim().length === 0) {
     return { error: "Project name is required" };
   }
 
+  const updateData: Record<string, unknown> = {
+    name: name.trim(),
+    description: description.trim(),
+  };
+  if (aiContext !== undefined) {
+    updateData.aiContext = aiContext.trim();
+  }
+
   const project = await prisma.project.update({
     where: { id: projectId },
-    data: { name: name.trim(), description: description.trim() },
+    data: updateData,
   });
 
   revalidatePath("/dashboard");

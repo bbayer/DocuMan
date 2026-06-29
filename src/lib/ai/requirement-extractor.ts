@@ -93,17 +93,39 @@ function splitIntoChunks(text: string, maxChars: number): string[] {
   return chunks;
 }
 
+// ─── Extraction quality constraints ──────────────────────
+
+const EXTRACTION_QUALITY = `
+Extraction quality rules:
+- Preserve exact item numbers from the source text. Do NOT renumber.
+- Maintain parent-child relationships via indentLevel.
+- NEVER merge two separate requirements into one item.
+- NEVER skip content — every line of the document must appear in your output.
+- When in doubt about category, prefer REQUIREMENT over PARAGRAPH if the text contains "shall", "must", "will", or "should".
+- Preserve the exact wording from the source document — do NOT rephrase or summarize.`;
+
 // ─── Extract from a Single Chunk ─────────────────────────
 
 async function extractChunk(
   chunkText: string,
   chunkIndex: number,
   totalChunks: number,
-  contextHint: string
+  contextHint: string,
+  previousItems?: ExtractedRequirement[]
 ): Promise<ExtractedRequirement[]> {
   const chunkLabel = totalChunks > 1
     ? `\n\nNOTE: This is part ${chunkIndex + 1} of ${totalChunks} of the document. ${contextHint}`
     : "";
+
+  // Build trailing context from previous chunk for cross-chunk continuity
+  let trailingContext = "";
+  if (previousItems && previousItems.length > 0) {
+    const contextItems = previousItems.slice(-3); // Last 3 items
+    const itemLines = contextItems.map(item =>
+      `- [${item.itemNumber}] ${item.category}: ${item.title ? item.title + " — " : ""}${item.content.substring(0, 150)}${item.content.length > 150 ? "..." : ""}`
+    ).join("\n");
+    trailingContext = `\n\nPREVIOUS CHUNK ENDED WITH THESE ITEMS (maintain continuity — do NOT re-extract these):\n${itemLines}\n\nNOW EXTRACT FROM THE FOLLOWING TEXT (continue numbering and hierarchy from where the previous chunk left off):`;
+  }
 
   const result = await generateObject({
     model: getModel(),
@@ -120,8 +142,9 @@ For each item, determine:
 3. **title**: A brief title or the heading text
 4. **content**: The full text content
 5. **indentLevel**: The nesting depth (0 = top-level, 1 = under a section, 2 = sub-sub-section, etc.)
+${EXTRACTION_QUALITY}
 
-IMPORTANT: You MUST extract EVERY item from the text below. Do NOT skip or summarize any content. Every paragraph, heading, requirement, and note must appear in your output.${chunkLabel}
+IMPORTANT: You MUST extract EVERY item from the text below. Do NOT skip or summarize any content. Every paragraph, heading, requirement, and note must appear in your output.${chunkLabel}${trailingContext}
 
 DOCUMENT TEXT:
 ${chunkText}`,
@@ -159,6 +182,7 @@ For each item, determine:
 3. **title**: A brief title or the heading text
 4. **content**: The full text content
 5. **indentLevel**: The nesting depth (0 = top-level, 1 = under a section, 2 = sub-sub-section, etc.)
+${EXTRACTION_QUALITY}
 
 IMPORTANT: You MUST extract EVERY item from the text below. Do NOT skip or summarize any content. Every paragraph, heading, requirement, and note must appear in your output.
 
@@ -179,8 +203,13 @@ ${text}`,
         ? "Extract all items from this first section. Subsequent sections will follow."
         : `Continue extracting from where the previous section ended. Maintain consistent numbering and structure.`;
 
+      // Pass last 3 items from the previous chunk for cross-chunk continuity
+      const previousItems = allRequirements.length > 0
+        ? allRequirements.slice(-3)
+        : undefined;
+
       console.log(`[Extractor] Processing chunk ${i + 1}/${chunks.length} (${chunks[i].length} chars)`);
-      const chunkReqs = await extractChunk(chunks[i], i, chunks.length, contextHint);
+      const chunkReqs = await extractChunk(chunks[i], i, chunks.length, contextHint, previousItems);
       console.log(`[Extractor] Chunk ${i + 1} yielded ${chunkReqs.length} items`);
 
       // Extract document title from the first chunk's first TITLE item

@@ -74,6 +74,8 @@ export function AIChatPanel({
                 content: requirement.content,
               }
             : null,
+          documentId,
+          projectId,
         }),
       });
 

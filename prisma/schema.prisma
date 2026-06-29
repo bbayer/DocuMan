@@ -32,6 +32,7 @@ model Project {
   id          String   @id @default(uuid())
   name        String
   description String   @default("")
+  aiContext   String   @default("")  // User-provided system context for AI prompts
   ownerId     String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

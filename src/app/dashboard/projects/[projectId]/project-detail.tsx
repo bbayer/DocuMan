@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { deleteDocument, updateDocument } from "@/app/actions";
+import { deleteDocument, updateDocument, updateProject } from "@/app/actions";
 
 interface Document {
   id: string;
@@ -23,6 +23,7 @@ interface Project {
   id: string;
   name: string;
   description: string;
+  aiContext: string;
   documents: Document[];
 }
 
@@ -49,6 +50,12 @@ export function ProjectDetail({ project }: { project: Project }) {
   const [extraInstructions, setExtraInstructions] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+
+  // AI Context state
+  const [showAiContext, setShowAiContext] = useState(!!project.aiContext);
+  const [aiContextValue, setAiContextValue] = useState(project.aiContext || "");
+  const [aiContextSaving, setAiContextSaving] = useState(false);
+  const [aiContextSaved, setAiContextSaved] = useState(false);
 
   const originalDocs = project.documents.filter((d) => d.type === "ORIGINAL");
   const derivativeDocs = project.documents.filter((d) => d.type === "DERIVATIVE");
@@ -129,6 +136,75 @@ export function ProjectDetail({ project }: { project: Project }) {
         <h1 className="page-title">{project.name}</h1>
         {project.description && (
           <p className="page-subtitle">{project.description}</p>
+        )}
+      </div>
+
+      {/* AI Context Section */}
+      <div className="card" style={{ marginBottom: "var(--space-6)", padding: "var(--space-4) var(--space-5)" }}>
+        <div
+          className="flex items-center justify-between"
+          style={{ cursor: "pointer" }}
+          onClick={() => setShowAiContext(!showAiContext)}
+        >
+          <div className="flex items-center gap-2">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: "var(--color-accent)" }}>
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            </svg>
+            <span className="font-semibold" style={{ fontSize: "var(--font-size-sm)" }}>AI System Context</span>
+            {project.aiContext && (
+              <span className="badge badge-requirement" style={{ fontSize: "9px" }}>Configured</span>
+            )}
+          </div>
+          <svg
+            width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+            style={{ transform: showAiContext ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s", color: "var(--color-text-tertiary)" }}
+          >
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </div>
+        {showAiContext && (
+          <div style={{ marginTop: "var(--space-4)" }}>
+            <p style={{ fontSize: "var(--font-size-sm)", color: "var(--color-text-secondary)", marginBottom: "var(--space-3)", marginTop: 0, lineHeight: 1.5 }}>
+              Describe the system being specified. This context is included in all AI prompts for requirement extraction, derivative generation, and chat assistance.
+            </p>
+            <textarea
+              className="input"
+              id="ai-context-input"
+              value={aiContextValue}
+              onChange={(e) => {
+                setAiContextValue(e.target.value);
+                setAiContextSaved(false);
+              }}
+              placeholder={"e.g., Missile defense radar system. MIL-STD-498 Level A criticality. Ada/C++ codebase targeting VxWorks RTOS. All requirements must reference CSCI identifiers. Use passive voice for shall-statements."}
+              rows={4}
+              style={{ resize: "vertical", minHeight: "80px", fontFamily: "inherit", width: "100%" }}
+            />
+            <div className="flex items-center gap-3" style={{ marginTop: "var(--space-3)", justifyContent: "flex-end" }}>
+              {aiContextSaved && (
+                <span style={{ fontSize: "var(--font-size-xs)", color: "var(--color-success, #10b981)" }}>
+                  ✓ Saved
+                </span>
+              )}
+              <button
+                className="btn btn-primary btn-sm"
+                id="save-ai-context-btn"
+                disabled={aiContextSaving || aiContextValue === (project.aiContext || "")}
+                onClick={async () => {
+                  setAiContextSaving(true);
+                  await updateProject(project.id, project.name, project.description, aiContextValue);
+                  setAiContextSaving(false);
+                  setAiContextSaved(true);
+                  router.refresh();
+                }}
+              >
+                {aiContextSaving ? (
+                  <><span className="spinner" /> Saving...</>
+                ) : (
+                  "Save AI Context"
+                )}
+              </button>
+            </div>
+          </div>
         )}
       </div>
 

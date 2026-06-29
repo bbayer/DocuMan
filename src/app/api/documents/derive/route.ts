@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
-import { breakDownRequirements } from "@/lib/ai/derivative-generator";
+import { breakDownRequirements, DerivationContext } from "@/lib/ai/derivative-generator";
 
 export async function POST(req: NextRequest) {
   const { projectId, parentDocumentId, title, docCategory, extraInstructions } = await req.json();
@@ -21,6 +21,17 @@ export async function POST(req: NextRequest) {
       majorVersion: 0,
       minorVersion: 1,
     },
+  });
+
+  // Fetch project context and parent document info for AI prompts
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: { aiContext: true },
+  });
+
+  const parentDocument = await prisma.document.findUnique({
+    where: { id: parentDocumentId },
+    select: { title: true },
   });
 
   const parentReqs = await prisma.requirement.findMany({
@@ -90,8 +101,29 @@ export async function POST(req: NextRequest) {
             const pct = Math.floor(5 + ((processedCount / totalElements) * 90));
             await writer.write(encoder.encode(JSON.stringify({ progress: pct, status: `Copied structure: ${pr.title || "Paragraph"}` }) + "\n"));
          } else {
+            // Compute section headings for this chunk — walk backwards
+            // from the first item in the chunk to find ancestor TITLE items
+            const firstItemIndex = parentReqs.indexOf(chunk.items[0]);
+            const sectionHeadings: string[] = [];
+            const seenLevels = new Set<number>();
+            for (let si = firstItemIndex - 1; si >= 0; si--) {
+              const pr = parentReqs[si];
+              if (pr.category === "TITLE" && !seenLevels.has(pr.indentLevel)) {
+                sectionHeadings.unshift(`${pr.itemNumber} ${pr.title || pr.content}`.trim());
+                seenLevels.add(pr.indentLevel);
+              }
+            }
+
+            // Build context for AI
+            const derivationContext: DerivationContext = {
+              projectAiContext: project?.aiContext || undefined,
+              documentTitle: parentDocument?.title || undefined,
+              sectionHeadings: sectionHeadings.length > 0 ? sectionHeadings : undefined,
+              extraInstructions: extraInstructions || undefined,
+            };
+
             // Process AI chunk
-            const derivedResults = await breakDownRequirements(chunk.items, docCategory, extraInstructions);
+            const derivedResults = await breakDownRequirements(chunk.items, docCategory, derivationContext);
 
             // Save results
             for (const pr of chunk.items) {

@@ -27,40 +27,87 @@ const DerivedRequirementSchema = z.object({
 
 export type DerivedRequirementOutput = z.infer<typeof DerivedRequirementSchema.shape.derivedRequirements>[0];
 
+// ─── Context passed to every derivation call ─────────────
+
+export interface DerivationContext {
+  /** User-defined project-level system description */
+  projectAiContext?: string;
+  /** Title of the parent document being derived from */
+  documentTitle?: string;
+  /** Section headings (TITLE items) that are ancestors of the current chunk */
+  sectionHeadings?: string[];
+  /** User-provided extra instructions for the AI */
+  extraInstructions?: string;
+}
+
+// ─── Quality constraints appended to every prompt ────────
+
+const QUALITY_CONSTRAINTS = `
+Quality constraints for generated requirements:
+- Each requirement SHALL be atomic — exactly one testable statement per requirement.
+- Use "shall" for mandatory, "should" for recommended, "may" for optional.
+- Each requirement must be verifiable — include measurable acceptance criteria where applicable.
+- Avoid ambiguous terms: "appropriate", "as needed", "etc.", "user-friendly", "adequate".
+- Maintain consistent terminology from the source document and system context.
+- Preserve the hierarchical section structure of the parent document.
+- Do NOT merge multiple parent requirements into a single derived requirement.
+- Do NOT generate requirements that are not traceable to a parent requirement.`;
+
 /**
  * Iterates through a chunk of parent requirements and breaks them down.
  * @param parentChunk Array of parent requirements (which must only be of category "REQUIREMENT")
  * @param docCategory The type of target document (SSS, SRS, SDD, STP, IRS)
+ * @param context Additional context for domain-aware, stable generation
  */
 export async function breakDownRequirements(
   parentChunk: { id: string; content: string; title: string }[],
   docCategory: string,
-  extraInstructions?: string
+  context: DerivationContext = {}
 ): Promise<DerivedRequirementOutput[]> {
   if (parentChunk.length === 0) return [];
 
-  // Determine system prompt based on category
+  // ── Build system prompt ──────────────────────────────
   let systemContext = "You are an expert Systems Engineer.";
+
+  // Project-level AI context (domain, standards, system description)
+  if (context.projectAiContext) {
+    systemContext += `\n\nSYSTEM CONTEXT (provided by the project owner — treat as ground truth):\n${context.projectAiContext}`;
+  }
+
+  // Document context
+  if (context.documentTitle) {
+    systemContext += `\n\nSOURCE DOCUMENT: "${context.documentTitle}"`;
+  }
+
+  // Section context — helps the LLM understand what chapter these requirements belong to
+  if (context.sectionHeadings && context.sectionHeadings.length > 0) {
+    systemContext += `\n\nCURRENT SECTION HIERARCHY:\n${context.sectionHeadings.map((h, i) => `${"  ".repeat(i)}→ ${h}`).join("\n")}`;
+  }
+
+  // Document-type-specific instructions
   if (docCategory === "SSS") {
-    systemContext += " Analyze the upstream requirements and synthesize overarching System/Subsystem Specifications. Describe system boundaries, operational capabilities, and behavioral models.";
+    systemContext += "\n\nAnalyze the upstream requirements and synthesize overarching System/Subsystem Specifications. Describe system boundaries, operational capabilities, and behavioral models.";
   } else if (docCategory === "SRS") {
-    systemContext += " Analyze the upstream requirements and break them down into granular, atomic, and testable Software Requirements (functional, non-functional, interface constraints).";
+    systemContext += "\n\nAnalyze the upstream requirements and break them down into granular, atomic, and testable Software Requirements (functional, non-functional, interface constraints).";
   } else if (docCategory === "SDD") {
-    systemContext += " Translate the upstream requirements into Software Design Descriptions. Describe architecture constraints, modules, components, and database structures.";
+    systemContext += "\n\nTranslate the upstream requirements into Software Design Descriptions. Describe architecture constraints, modules, components, and database structures.";
   } else if (docCategory === "STP") {
-    systemContext += " Frame the upstream requirements as Software Test Plans. Describe testable verification procedures and overarching test cases needed to satisfy the requirements.";
+    systemContext += "\n\nFrame the upstream requirements as Software Test Plans. Describe testable verification procedures and overarching test cases needed to satisfy the requirements.";
   } else if (docCategory === "IRS") {
-    systemContext += " Extract external system boundaries, protocols, and data exchange formats for an Interface Requirements Specification.";
+    systemContext += "\n\nExtract external system boundaries, protocols, and data exchange formats for an Interface Requirements Specification.";
   } else {
-    systemContext += " Break down the upstream requirements into logically structured, atomic, and granular lower-level elements tailored for technical implementation.";
+    systemContext += "\n\nBreak down the upstream requirements into logically structured, atomic, and granular lower-level elements tailored for technical implementation.";
   }
 
-  // Merge user-provided extra instructions into the system prompt
-  if (extraInstructions) {
-    systemContext += `\n\nAdditional Instructions (provided by the user — follow these as extra rules):\n${extraInstructions}`;
+  // Quality constraints
+  systemContext += QUALITY_CONSTRAINTS;
+
+  // User-provided extra instructions
+  if (context.extraInstructions) {
+    systemContext += `\n\nAdditional Instructions (provided by the user — follow these as extra rules):\n${context.extraInstructions}`;
   }
 
-  // Construct input representing the chunk
+  // ── Construct input payload ──────────────────────────
   const inputList = parentChunk.map((req) => 
     `Parent ID: ${req.id}\nTitle: ${req.title || "Untitled"}\nContent: ${req.content}\n---`
   ).join("\n");
