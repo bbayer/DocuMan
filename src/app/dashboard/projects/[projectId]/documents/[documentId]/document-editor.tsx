@@ -42,6 +42,7 @@ interface Document {
   status: string;
   majorVersion: number;
   minorVersion: number;
+  aiPrompt: string;
   parentDocument: { id: string; title: string } | null;
   derivatives: { id: string; title: string; docCategory: string; status: string }[];
   requirements: Requirement[];
@@ -76,6 +77,7 @@ export function DocumentEditor({
   const [showVersions, setShowVersions] = useState<string | null>(null);
   const [previewReq, setPreviewReq] = useState<{ uniqueId: string; title: string; content: string } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [showPrompt, setShowPrompt] = useState(false);
 
   const isEditable = doc.status !== "PUBLISHED";
 
@@ -232,6 +234,51 @@ export function DocumentEditor({
           </div>
         </div>
       </div>
+
+      {/* AI Prompt banner — shown for derivative docs that have a saved prompt */}
+      {doc.type === "DERIVATIVE" && doc.aiPrompt && (
+        <div
+          className="card"
+          style={{ marginBottom: "var(--space-5)", padding: "var(--space-3) var(--space-5)" }}
+        >
+          <div
+            className="flex items-center justify-between"
+            style={{ cursor: "pointer" }}
+            onClick={() => setShowPrompt(!showPrompt)}
+          >
+            <div className="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: "var(--color-accent)" }}>
+                <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+              </svg>
+              <span className="font-semibold" style={{ fontSize: "var(--font-size-sm)" }}>AI Generation Prompt</span>
+            </div>
+            <svg
+              width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+              style={{ transform: showPrompt ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s", color: "var(--color-text-tertiary)" }}
+            >
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </div>
+          {showPrompt && (
+            <div
+              style={{
+                marginTop: "var(--space-3)",
+                padding: "var(--space-4)",
+                background: "var(--color-surface)",
+                borderRadius: "var(--radius-md)",
+                border: "1px solid var(--color-border)",
+                fontSize: "var(--font-size-sm)",
+                lineHeight: 1.6,
+                whiteSpace: "pre-wrap",
+                color: "var(--color-text-secondary)",
+                fontFamily: "'SF Mono', 'Fira Code', 'Consolas', monospace",
+              }}
+            >
+              {doc.aiPrompt}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Derivatives section */}
       {doc.derivatives.length > 0 && (

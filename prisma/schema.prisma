@@ -55,6 +55,7 @@ model Document {
   majorVersion     Int      @default(0)
   minorVersion     Int      @default(1)
   parentDocumentId String?  // null for originals, references source for derivatives
+  aiPrompt         String   @default("")  // Extra instructions used during AI derivation
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 

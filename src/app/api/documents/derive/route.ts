@@ -20,6 +20,7 @@ export async function POST(req: NextRequest) {
       status: "DRAFT",
       majorVersion: 0,
       minorVersion: 1,
+      aiPrompt: extraInstructions?.trim() || "",
     },
   });
 
