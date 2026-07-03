@@ -48,6 +48,7 @@ export function ProjectDetail({ project }: { project: Project }) {
   const [deriveCategory, setDeriveCategory] = useState("SRS");
   const [deriveTitle, setDeriveTitle] = useState("");
   const [extraInstructions, setExtraInstructions] = useState("");
+  const [reasoningEffort, setReasoningEffort] = useState<"none" | "low" | "medium" | "high">("medium");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
@@ -79,6 +80,7 @@ export function ProjectDetail({ project }: { project: Project }) {
           title: deriveTitle.trim(),
           docCategory: deriveCategory,
           extraInstructions: extraInstructions.trim() || undefined,
+          reasoningEffort,
         }),
       });
 
@@ -414,6 +416,25 @@ export function ProjectDetail({ project }: { project: Project }) {
                     }}
                   />
                 </div>
+              </div>
+              <div className="input-group">
+                <label className="input-label" htmlFor="derive-reasoning">
+                  Reasoning Effort
+                </label>
+                <p style={{ fontSize: "var(--font-size-sm)", color: "var(--color-text-secondary)", marginBottom: "var(--space-2)", marginTop: 0 }}>
+                  Controls how much the AI model "thinks" before generating. Higher effort produces more thorough results but takes longer. Requires a reasoning-capable model.
+                </p>
+                <select
+                  className="input"
+                  id="derive-reasoning"
+                  value={reasoningEffort}
+                  onChange={(e) => setReasoningEffort(e.target.value as "none" | "low" | "medium" | "high")}
+                >
+                  <option value="none">None — Skip reasoning</option>
+                  <option value="low">Low — Quick analysis</option>
+                  <option value="medium">Medium — Balanced (default)</option>
+                  <option value="high">High — Deep analysis</option>
+                </select>
               </div>
             </div>
             <div className="modal-footer">

@@ -38,6 +38,8 @@ export interface DerivationContext {
   sectionHeadings?: string[];
   /** User-provided extra instructions for the AI */
   extraInstructions?: string;
+  /** Reasoning effort level for models that support chain-of-thought */
+  reasoningEffort?: "none" | "low" | "medium" | "high";
 }
 
 // ─── Quality constraints appended to every prompt ────────
@@ -122,10 +124,16 @@ Parent Requirements Payload:
 ${inputList}`;
 
   try {
+    // Build reasoning option if enabled
+    const reasoningOption = context.reasoningEffort && context.reasoningEffort !== "none"
+      ? { reasoning: { effort: context.reasoningEffort as "low" | "medium" | "high" } }
+      : {};
+
     const result = await generateObject({
       model: getModel(),
       schema: DerivedRequirementSchema,
       prompt: prompt,
+      ...reasoningOption,
     });
 
     return result.object.derivedRequirements;

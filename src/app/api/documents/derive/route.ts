@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { breakDownRequirements, DerivationContext } from "@/lib/ai/derivative-generator";
 
 export async function POST(req: NextRequest) {
-  const { projectId, parentDocumentId, title, docCategory, extraInstructions } = await req.json();
+  const { projectId, parentDocumentId, title, docCategory, extraInstructions, reasoningEffort } = await req.json();
 
   if (!projectId || !parentDocumentId || !title || !docCategory) {
     return new Response(JSON.stringify({ error: "Missing parameters" }), { status: 400 });
@@ -121,6 +121,7 @@ export async function POST(req: NextRequest) {
               documentTitle: parentDocument?.title || undefined,
               sectionHeadings: sectionHeadings.length > 0 ? sectionHeadings : undefined,
               extraInstructions: extraInstructions || undefined,
+              reasoningEffort: reasoningEffort || undefined,
             };
 
             // Process AI chunk
