@@ -68,6 +68,7 @@ model Document {
 
   @@index([projectId])
   @@index([parentDocumentId])
+  @@index([projectId, type])   // project page: filter originals vs derivatives
 }
 
 // ─── Original Uploaded Files ─────────────────────────────────────
@@ -102,6 +103,7 @@ model DocumentVersion {
 
   @@index([documentId])
   @@index([createdById])
+  @@index([documentId, isCurrent])   // quickly find current version
 }
 
 // ─── Requirements ────────────────────────────────────────────────
@@ -129,6 +131,9 @@ model Requirement {
 
   @@index([documentId])
   @@index([parentRequirementId])
+  @@index([documentId, sortOrder])   // document page ORDER BY, chat sibling range queries
+  @@index([documentId, category])    // chat route: find nearest TITLE by documentId + category
+  @@index([uniqueId])                // cross-reference lookups by display ID
 }
 
 // ─── Requirement Versions (granular change tracking) ─────────────
@@ -149,6 +154,7 @@ model RequirementVersion {
 
   @@index([requirementId])
   @@index([editedById])
+  @@index([requirementId, version])  // version history ORDER BY desc
 }
 
 // ─── Traceability Links ──────────────────────────────────────────
@@ -167,6 +173,7 @@ model TraceabilityLink {
   @@unique([sourceRequirementId, targetRequirementId])
   @@index([sourceRequirementId])
   @@index([targetRequirementId])
+  @@index([isSuspect])               // dashboard: filter suspect links
 }
 
 // ─── Document Export Templates ───────────────────────────────────
