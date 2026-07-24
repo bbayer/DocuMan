@@ -40,6 +40,16 @@ export interface DerivationContext {
   extraInstructions?: string;
   /** Reasoning effort level for models that support chain-of-thought */
   reasoningEffort?: "none" | "low" | "medium" | "high";
+  /** Detected document language (ISO 639-1 code) */
+  language?: string;
+  /** Glossary of canonical terms to enforce (from analysis pass) */
+  glossary?: { term: string; definition: string }[];
+  /** Target document outline sections in document language (from analysis pass) */
+  targetOutline?: { sectionNumber: string; sectionTitle: string }[];
+  /** Cross-cutting themes that apply to all requirements */
+  themes?: string[];
+  /** Running summary of previously generated requirement titles (for dedup) */
+  previouslyGenerated?: string[];
 }
 
 // ─── Quality constraints appended to every prompt ────────
@@ -47,13 +57,12 @@ export interface DerivationContext {
 const QUALITY_CONSTRAINTS = `
 Quality constraints for generated requirements:
 - Each requirement SHALL be atomic — exactly one testable statement per requirement.
-- Use "shall" for mandatory, "should" for recommended, "may" for optional.
 - Each requirement must be verifiable — include measurable acceptance criteria where applicable.
-- Avoid ambiguous terms: "appropriate", "as needed", "etc.", "user-friendly", "adequate".
-- Maintain consistent terminology from the source document and system context.
+- Maintain consistent terminology from the glossary and source document.
 - Preserve the hierarchical section structure of the parent document.
 - Do NOT merge multiple parent requirements into a single derived requirement.
-- Do NOT generate requirements that are not traceable to a parent requirement.`;
+- Do NOT generate requirements that are not traceable to a parent requirement.
+- Do NOT duplicate requirements that have already been generated (see PREVIOUSLY GENERATED list).`;
 
 /**
  * Iterates through a chunk of parent requirements and breaks them down.
@@ -71,6 +80,21 @@ export async function breakDownRequirements(
   // ── Build system prompt ──────────────────────────────
   let systemContext = "You are an expert Systems Engineer.";
 
+  // Language instruction
+  if (context.language) {
+    systemContext += `\n\nDOCUMENT LANGUAGE: ${context.language}`;
+    systemContext += `\nGenerate all requirement text in this language.`;
+    if (context.language === "tr") {
+      systemContext += `\nUse Turkish definite future tense ("...yacaktır", "...yecektir") for mandatory requirements (shall-equivalent).`;
+      systemContext += `\nUse "...malıdır"/"...melidir" for recommended (should-equivalent).`;
+      systemContext += `\nUse "...bilir"/"...abilir" for optional (may-equivalent).`;
+    } else {
+      systemContext += `\nUse "shall" for mandatory, "should" for recommended, "may" for optional.`;
+    }
+  } else {
+    systemContext += `\nUse "shall" for mandatory, "should" for recommended, "may" for optional.`;
+  }
+
   // Project-level AI context (domain, standards, system description)
   if (context.projectAiContext) {
     systemContext += `\n\nSYSTEM CONTEXT (provided by the project owner — treat as ground truth):\n${context.projectAiContext}`;
@@ -81,9 +105,38 @@ export async function breakDownRequirements(
     systemContext += `\n\nSOURCE DOCUMENT: "${context.documentTitle}"`;
   }
 
+  // Glossary enforcement — the key to terminology consistency
+  if (context.glossary && context.glossary.length > 0) {
+    const glossaryLines = context.glossary.slice(0, 30).map(
+      (g) => `- "${g.term}": ${g.definition}`
+    ).join("\n");
+    systemContext += `\n\nTERMINOLOGY GLOSSARY (use these EXACT terms — do NOT use alternatives or synonyms):\n${glossaryLines}`;
+  }
+
+  // Target document outline awareness
+  if (context.targetOutline && context.targetOutline.length > 0) {
+    const outlineLines = context.targetOutline.map(
+      (s) => `- ${s.sectionNumber} ${s.sectionTitle}`
+    ).join("\n");
+    systemContext += `\n\nTARGET DOCUMENT STRUCTURE (J-STD-016 ${docCategory}):\n${outlineLines}`;
+  }
+
+  // Cross-cutting themes
+  if (context.themes && context.themes.length > 0) {
+    systemContext += `\n\nCROSS-CUTTING THEMES (apply to all requirements where relevant):\n${context.themes.map((t) => `- ${t}`).join("\n")}`;
+  }
+
   // Section context — helps the LLM understand what chapter these requirements belong to
   if (context.sectionHeadings && context.sectionHeadings.length > 0) {
     systemContext += `\n\nCURRENT SECTION HIERARCHY:\n${context.sectionHeadings.map((h, i) => `${"  ".repeat(i)}→ ${h}`).join("\n")}`;
+  }
+
+  // Cross-chunk deduplication — the key to avoiding duplicates
+  if (context.previouslyGenerated && context.previouslyGenerated.length > 0) {
+    const prevLines = context.previouslyGenerated.slice(-30).map(
+      (t) => `- ${t}`
+    ).join("\n");
+    systemContext += `\n\nPREVIOUSLY GENERATED REQUIREMENTS (do NOT duplicate these):\n${prevLines}`;
   }
 
   // Document-type-specific instructions

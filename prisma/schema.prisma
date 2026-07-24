@@ -37,8 +37,9 @@ model Project {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  owner     User       @relation(fields: [ownerId], references: [id])
-  documents Document[]
+  owner          User            @relation(fields: [ownerId], references: [id])
+  documents      Document[]
+  glossaryTerms  GlossaryTerm[]
 
   @@index([ownerId])
 }
@@ -55,7 +56,8 @@ model Document {
   majorVersion     Int      @default(0)
   minorVersion     Int      @default(1)
   parentDocumentId String?  // null for originals, references source for derivatives
-  aiPrompt         String   @default("")  // Extra instructions used during AI derivation
+  aiPrompt         String   @default("")    // Extra instructions used during AI derivation
+  generationMeta   String   @default("{}") // JSON: analysis pass output, validation report
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -119,6 +121,8 @@ model Requirement {
   sortOrder           Int      @default(0)
   indentLevel         Int      @default(0)
   parentRequirementId String?
+  requiresReview      Boolean  @default(false) // Quality validator flag
+  reviewReason        String   @default("")    // Why flagged (e.g., "Ambiguous term: 'uygun şekilde'")
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
@@ -190,4 +194,22 @@ model DocumentTemplate {
   isBuiltIn    Boolean  @default(false)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+}
+
+// ─── Glossary Terms (project-level terminology) ──────────────────
+
+model GlossaryTerm {
+  id         String   @id @default(uuid())
+  projectId  String
+  term       String                // Canonical term (e.g., "Operatör Konsolu")
+  definition String   @default("") // Brief definition
+  aliases    String   @default("") // Comma-separated alternatives
+  source     String   @default("") // Which document introduced this term
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, term])
+  @@index([projectId])
 }

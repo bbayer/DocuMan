@@ -254,3 +254,61 @@ export async function deleteRequirement(
   revalidatePath(`/dashboard/projects/${projectId}/documents/${documentId}`);
   return { success: true };
 }
+
+// ─── Glossary Actions ────────────────────────────────────
+
+export async function addGlossaryTerm(
+  projectId: string,
+  term: string,
+  definition: string,
+  aliases: string
+) {
+  const glossaryTerm = await prisma.glossaryTerm.create({
+    data: {
+      projectId,
+      term: term.trim(),
+      definition: definition.trim(),
+      aliases: aliases.trim(),
+    },
+  });
+
+  revalidatePath(`/dashboard/projects/${projectId}`);
+  return { glossaryTerm };
+}
+
+export async function updateGlossaryTerm(
+  id: string,
+  data: { term?: string; definition?: string; aliases?: string }
+) {
+  const updateData: Record<string, unknown> = {};
+  if (data.term !== undefined) updateData.term = data.term.trim();
+  if (data.definition !== undefined) updateData.definition = data.definition.trim();
+  if (data.aliases !== undefined) updateData.aliases = data.aliases.trim();
+
+  const glossaryTerm = await prisma.glossaryTerm.update({
+    where: { id },
+    data: updateData,
+  });
+
+  revalidatePath(`/dashboard/projects/${glossaryTerm.projectId}`);
+  return { glossaryTerm };
+}
+
+export async function deleteGlossaryTerm(id: string) {
+  const glossaryTerm = await prisma.glossaryTerm.delete({ where: { id } });
+  revalidatePath(`/dashboard/projects/${glossaryTerm.projectId}`);
+  return { success: true };
+}
+
+// ─── Review Flag Actions ─────────────────────────────────
+
+export async function dismissReviewFlag(requirementId: string) {
+  const req = await prisma.requirement.update({
+    where: { id: requirementId },
+    data: { requiresReview: false, reviewReason: "" },
+    select: { document: { select: { id: true, projectId: true } } },
+  });
+
+  revalidatePath(`/dashboard/projects/${req.document.projectId}/documents/${req.document.id}`);
+  return { success: true };
+}
