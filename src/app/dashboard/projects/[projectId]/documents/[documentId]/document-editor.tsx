@@ -2,11 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   updateRequirement,
   addRequirement,
   deleteRequirement,
   updateDocumentStatus,
+  dismissReviewFlag,
 } from "@/app/actions";
 import { AIChatPanel } from "./ai-chat-panel";
 
@@ -19,6 +21,8 @@ interface Requirement {
   content: string;
   sortOrder: number;
   indentLevel: number;
+  requiresReview?: boolean;
+  reviewReason?: string;
   sourceLinks: {
     id: string;
     linkType: string;
@@ -43,6 +47,7 @@ interface Document {
   majorVersion: number;
   minorVersion: number;
   aiPrompt: string;
+  generationMeta?: string;
   parentDocument: { id: string; title: string } | null;
   derivatives: { id: string; title: string; docCategory: string; status: string }[];
   requirements: Requirement[];
@@ -61,6 +66,97 @@ const statusBadge: Record<string, string> = {
   PUBLISHED: "badge badge-published",
 };
 
+function renderFormattedContent(text: string) {
+  if (!text) return null;
+
+  if (text.includes("|") && text.includes("\n")) {
+    const lines = text.split("\n");
+    const elements: React.ReactNode[] = [];
+    let tableBuffer: string[] = [];
+    let textBuffer: string[] = [];
+
+    const flushText = (key: string) => {
+      if (textBuffer.length > 0) {
+        elements.push(
+          <div key={key} style={{ whiteSpace: "pre-wrap" }}>
+            {textBuffer.join("\n")}
+          </div>
+        );
+        textBuffer = [];
+      }
+    };
+
+    const flushTable = (key: string) => {
+      if (tableBuffer.length >= 2) {
+        const rows = tableBuffer
+          .map((line) => line.trim())
+          .filter((line) => line.startsWith("|") && line.endsWith("|"))
+          .map((line) =>
+            line
+              .slice(1, -1)
+              .split("|")
+              .map((cell) => cell.trim())
+          );
+
+        if (rows.length >= 2) {
+          const header = rows[0];
+          const dataRows = rows.slice(1).filter(
+            (row) => !row.every((cell) => /^[-:\s]+$/.test(cell))
+          );
+
+          elements.push(
+            <div key={key} className="md-table-wrapper">
+              <table className="md-table">
+                <thead>
+                  <tr>
+                    {header.map((col, idx) => (
+                      <th key={idx}>{col}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {dataRows.map((row, rIdx) => (
+                    <tr key={rIdx}>
+                      {row.map((cell, cIdx) => (
+                        <td key={cIdx}>{cell}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+          tableBuffer = [];
+          return;
+        }
+      }
+      textBuffer.push(...tableBuffer);
+      tableBuffer = [];
+    };
+
+    lines.forEach((line, idx) => {
+      const trimmed = line.trim();
+      const isTableLine = trimmed.startsWith("|") && trimmed.endsWith("|");
+      if (isTableLine) {
+        flushText(`text-${idx}`);
+        tableBuffer.push(line);
+      } else {
+        if (tableBuffer.length > 0) {
+          flushTable(`table-${idx}`);
+        }
+        textBuffer.push(line);
+      }
+    });
+
+    if (tableBuffer.length > 0) flushTable("table-end");
+    flushText("text-end");
+
+    return <>{elements}</>;
+  }
+
+  return <div style={{ whiteSpace: "pre-wrap" }}>{text}</div>;
+}
+
 export function DocumentEditor({
   document: doc,
   projectId,
@@ -68,6 +164,7 @@ export function DocumentEditor({
   document: Document;
   projectId: string;
 }) {
+  const router = useRouter();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState("");
   const [editTitle, setEditTitle] = useState("");
@@ -78,6 +175,12 @@ export function DocumentEditor({
   const [previewReq, setPreviewReq] = useState<{ uniqueId: string; title: string; content: string } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [showPrompt, setShowPrompt] = useState(false);
+  const [showReport, setShowReport] = useState(false);
+
+  let parsedMeta: any = null;
+  try {
+    if (doc.generationMeta) parsedMeta = JSON.parse(doc.generationMeta);
+  } catch {}
 
   const isEditable = doc.status !== "PUBLISHED";
 
@@ -191,12 +294,8 @@ export function DocumentEditor({
                 </button>
                 <button
                   className="btn btn-primary btn-sm"
-                  onClick={() => handleStatusChange("PUBLISHED")}
-                  id="publish-btn"
+                  onClick={() => updateDocumentStatus(doc.id, "PUBLISHED", projectId)}
                 >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
                   Publish
                 </button>
               </>
@@ -208,32 +307,65 @@ export function DocumentEditor({
             )}
           </div>
         </div>
-
-        <div>
-          <h1 className="page-title" style={{ fontSize: "var(--font-size-2xl)", marginBottom: "var(--space-2)", lineHeight: 1.3 }}>
-            {doc.title}
-          </h1>
-          <div className="flex items-center gap-4 text-sm text-secondary flex-wrap">
-            <span>v{doc.majorVersion}.{doc.minorVersion}</span>
-            <span>·</span>
-            <span>{doc.requirements.length} requirements</span>
-            {doc.type === "DERIVATIVE" && doc.parentDocument && (
-              <>
-                <span>·</span>
-                <span>
-                  Derived from:{" "}
-                  <Link
-                    href={`/dashboard/projects/${projectId}/documents/${doc.parentDocument.id}`}
-                    style={{ color: "var(--color-accent)" }}
-                  >
-                    {doc.parentDocument.title}
-                  </Link>
-                </span>
-              </>
-            )}
-          </div>
-        </div>
       </div>
+
+      {/* Generation Quality Report Banner */}
+      {parsedMeta?.validation && (
+        <div
+          className="card"
+          style={{ marginBottom: "var(--space-5)", padding: "var(--space-3) var(--space-5)" }}
+        >
+          <div
+            className="flex items-center justify-between"
+            style={{ cursor: "pointer" }}
+            onClick={() => setShowReport(!showReport)}
+          >
+            <div className="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: "var(--color-accent)" }}>
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                <polyline points="22 4 12 14.01 9 11.01" />
+              </svg>
+              <span className="font-semibold" style={{ fontSize: "var(--font-size-sm)" }}>Generation Quality Report</span>
+              <span
+                className="badge"
+                style={{
+                  fontSize: "10px",
+                  background: parsedMeta.validation.score >= 80 ? "rgba(16,185,129,0.15)" : parsedMeta.validation.score >= 60 ? "rgba(245,158,11,0.15)" : "rgba(239,68,68,0.15)",
+                  color: parsedMeta.validation.score >= 80 ? "#10b981" : parsedMeta.validation.score >= 60 ? "#f59e0b" : "#ef4444",
+                  fontWeight: 600,
+                }}
+              >
+                Score: {parsedMeta.validation.score}/100
+              </span>
+              {parsedMeta.validation.stats?.requiresReviewCount > 0 && (
+                <span className="badge badge-note" style={{ fontSize: "10px" }}>
+                  ⚠️ {parsedMeta.validation.stats.requiresReviewCount} flagged for review
+                </span>
+              )}
+            </div>
+            <svg
+              width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+              style={{ transform: showReport ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s", color: "var(--color-text-tertiary)" }}
+            >
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </div>
+          {showReport && (
+            <div style={{ marginTop: "var(--space-3)", fontSize: "var(--font-size-sm)", color: "var(--color-text-secondary)", lineHeight: 1.6 }}>
+              <div className="flex gap-4 flex-wrap" style={{ marginBottom: "var(--space-2)" }}>
+                <div><strong>Language:</strong> {parsedMeta.analysis?.language?.toUpperCase() || "EN"}</div>
+                <div><strong>Glossary terms used:</strong> {parsedMeta.analysis?.glossaryCount || 0}</div>
+                <div><strong>Warnings total:</strong> {parsedMeta.validation.warningCount || 0}</div>
+              </div>
+              {parsedMeta.analysis?.themes && parsedMeta.analysis.themes.length > 0 && (
+                <div style={{ marginTop: "var(--space-2)" }}>
+                  <strong>Cross-cutting themes:</strong> {parsedMeta.analysis.themes.join(" • ")}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* AI Prompt banner — shown for derivative docs that have a saved prompt */}
       {doc.type === "DERIVATIVE" && doc.aiPrompt && (
@@ -382,11 +514,36 @@ export function DocumentEditor({
         <div className="req-list">
           {filteredRequirements.map((req) => (
             <div key={req.id}>
-              <div className={`req-row req-indent-${Math.min(req.indentLevel, 3)}`}>
+              <div
+                className={`req-row req-indent-${Math.min(req.indentLevel, 3)}`}
+                style={req.requiresReview ? { borderLeft: "3px solid #f59e0b", background: "rgba(245, 158, 11, 0.03)" } : undefined}
+              >
                 <span className="req-item-number">{req.itemNumber}</span>
                 <span className={`badge ${categoryColors[req.category] || "badge-paragraph"}`}>
                   {req.category === "REQUIREMENT" ? "REQ" : req.category.substring(0, 4)}
                 </span>
+                {req.requiresReview && (
+                  <span
+                    className="badge"
+                    style={{
+                      fontSize: "10px",
+                      background: "rgba(245, 158, 11, 0.15)",
+                      color: "#d97706",
+                      cursor: "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "3px",
+                    }}
+                    title={`${req.reviewReason || "Flagged for quality review"}. Click to dismiss flag.`}
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      await dismissReviewFlag(req.id);
+                      router.refresh();
+                    }}
+                  >
+                    ⚠️ Review Needed
+                  </span>
+                )}
 
                 {editingId === req.id ? (
                   /* Editing mode */
@@ -417,7 +574,7 @@ export function DocumentEditor({
                   /* View mode */
                   <div className="req-content" style={{ flex: 1 }}>
                     {req.title && <div className="req-content-title">{req.title}</div>}
-                    <div className="req-content-text">{req.content}</div>
+                    <div className="req-content-text">{renderFormattedContent(req.content)}</div>
 
                     {/* Traceability indicators */}
                     {(req.sourceLinks.length > 0 || req.targetLinks.length > 0) && (

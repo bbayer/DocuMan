@@ -14,6 +14,9 @@ export default async function ProjectPage({ params }: Props) {
     project = await prisma.project.findUnique({
       where: { id: projectId },
       include: {
+        glossaryTerms: {
+          orderBy: { term: "asc" },
+        },
         documents: {
           orderBy: { updatedAt: "desc" },
           include: {

@@ -145,7 +145,22 @@ export async function breakDownRequirements(
   } else if (docCategory === "SRS") {
     systemContext += "\n\nAnalyze the upstream requirements and break them down into granular, atomic, and testable Software Requirements (functional, non-functional, interface constraints).";
   } else if (docCategory === "SDD") {
-    systemContext += "\n\nTranslate the upstream requirements into Software Design Descriptions. Describe architecture constraints, modules, components, and database structures.";
+    systemContext += "\n\nTranslate the upstream SRS software requirements into comprehensive J-STD-016 / IEEE 1016 Software Design Descriptions (SDD).\n" +
+      "For each software requirement, specify concrete software functions, components, interfaces, and data structures:\n" +
+      "1. SOFTWARE FUNCTIONS / UNITS:\n" +
+      "   - Provide the function or method signature (e.g. 'calculateTargetBearing(lat: float, lon: float): BearingResult').\n" +
+      "   - Describe the purpose and responsibilities of the function/module.\n" +
+      "   - Specify step-by-step Execution Logic / Algorithm (pseudo-code or logic sequence).\n" +
+      "2. MARKDOWN TABLES FOR DATA & PARAMETERS:\n" +
+      "   - For input/output parameters, format as a Markdown table:\n" +
+      "     | Parameter | Type | Direction | Description | Constraints |\n" +
+      "     | packet | Header | Input | Metadata header | Non-null |\n" +
+      "   - For data structures, database schemas, or memory maps, format as a Markdown table:\n" +
+      "     | Field Name | Type | Range / Units | Description |\n" +
+      "     | trackId | uint32 | 1 - 65535 | Unique track identifier |\n" +
+      "3. ARCHITECTURAL & INTERFACE DESIGN:\n" +
+      "   - Map each function to its parent CSCI component (e.g. 'RadarProcessingCSCI', 'UserInterfaceCSCI').\n" +
+      "   - Detail inter-module data flow, exception handling, and error codes.";
   } else if (docCategory === "STP") {
     systemContext += "\n\nFrame the upstream requirements as Software Test Plans. Describe testable verification procedures and overarching test cases needed to satisfy the requirements.";
   } else if (docCategory === "IRS") {

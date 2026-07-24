@@ -3,7 +3,15 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { deleteDocument, updateDocument, updateProject } from "@/app/actions";
+import { deleteDocument, updateDocument, updateProject, addGlossaryTerm, updateGlossaryTerm, deleteGlossaryTerm } from "@/app/actions";
+
+interface GlossaryTerm {
+  id: string;
+  term: string;
+  definition: string;
+  aliases: string;
+  source: string;
+}
 
 interface Document {
   id: string;
@@ -25,6 +33,7 @@ interface Project {
   description: string;
   aiContext: string;
   documents: Document[];
+  glossaryTerms: GlossaryTerm[];
 }
 
 const statusBadgeClass: Record<string, string> = {
@@ -57,6 +66,17 @@ export function ProjectDetail({ project }: { project: Project }) {
   const [aiContextValue, setAiContextValue] = useState(project.aiContext || "");
   const [aiContextSaving, setAiContextSaving] = useState(false);
   const [aiContextSaved, setAiContextSaved] = useState(false);
+
+  // Glossary state
+  const [showGlossary, setShowGlossary] = useState((project.glossaryTerms || []).length > 0);
+  const [glossaryTerms, setGlossaryTerms] = useState<GlossaryTerm[]>(project.glossaryTerms || []);
+  const [newTerm, setNewTerm] = useState("");
+  const [newDefinition, setNewDefinition] = useState("");
+  const [newAliases, setNewAliases] = useState("");
+  const [editingTermId, setEditingTermId] = useState<string | null>(null);
+  const [editTerm, setEditTerm] = useState("");
+  const [editDefinition, setEditDefinition] = useState("");
+  const [editAliases, setEditAliases] = useState("");
 
   const originalDocs = project.documents.filter((d) => d.type === "ORIGINAL");
   const derivativeDocs = project.documents.filter((d) => d.type === "DERIVATIVE");
@@ -205,6 +225,131 @@ export function ProjectDetail({ project }: { project: Project }) {
                   "Save AI Context"
                 )}
               </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Terminology Glossary */}
+      <div className="card" style={{ marginBottom: "var(--space-6)", padding: "var(--space-4) var(--space-5)" }}>
+        <div
+          className="flex items-center justify-between"
+          style={{ cursor: "pointer" }}
+          onClick={() => setShowGlossary(!showGlossary)}
+        >
+          <div className="flex items-center gap-2">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: "var(--color-accent)" }}>
+              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+              <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+            </svg>
+            <span className="font-semibold" style={{ fontSize: "var(--font-size-sm)" }}>Terminology Glossary</span>
+            {glossaryTerms.length > 0 && (
+              <span className="badge badge-requirement" style={{ fontSize: "9px" }}>
+                {glossaryTerms.length} terms
+              </span>
+            )}
+          </div>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+            style={{ transform: showGlossary ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s", color: "var(--color-text-tertiary)" }}
+          >
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </div>
+        {showGlossary && (
+          <div style={{ marginTop: "var(--space-4)" }}>
+            <p style={{ fontSize: "var(--font-size-sm)", color: "var(--color-text-secondary)", marginBottom: "var(--space-3)", marginTop: 0, lineHeight: 1.5 }}>
+              Canonical terminology for this project. Terms are auto-extracted during AI generation and enforced across all derivative documents.
+            </p>
+            
+            {/* Terms table */}
+            {glossaryTerms.length > 0 && (
+              <div style={{ overflowX: "auto", marginBottom: "var(--space-4)" }}>
+                <table style={{ width: "100%", fontSize: "var(--font-size-sm)", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr style={{ borderBottom: "1px solid var(--color-border)", textAlign: "left" }}>
+                      <th style={{ padding: "var(--space-2) var(--space-3)", fontWeight: 600 }}>Term</th>
+                      <th style={{ padding: "var(--space-2) var(--space-3)", fontWeight: 600 }}>Definition</th>
+                      <th style={{ padding: "var(--space-2) var(--space-3)", fontWeight: 600 }}>Aliases</th>
+                      <th style={{ padding: "var(--space-2) var(--space-3)", fontWeight: 600, width: "80px" }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {glossaryTerms.map((gt) => (
+                      <tr key={gt.id} style={{ borderBottom: "1px solid var(--color-border-light, var(--color-border))" }}>
+                        {editingTermId === gt.id ? (
+                          <>
+                            <td style={{ padding: "var(--space-2) var(--space-3)" }}>
+                              <input className="input" value={editTerm} onChange={(e) => setEditTerm(e.target.value)} style={{ fontSize: "var(--font-size-sm)", padding: "4px 8px" }} />
+                            </td>
+                            <td style={{ padding: "var(--space-2) var(--space-3)" }}>
+                              <input className="input" value={editDefinition} onChange={(e) => setEditDefinition(e.target.value)} style={{ fontSize: "var(--font-size-sm)", padding: "4px 8px" }} />
+                            </td>
+                            <td style={{ padding: "var(--space-2) var(--space-3)" }}>
+                              <input className="input" value={editAliases} onChange={(e) => setEditAliases(e.target.value)} style={{ fontSize: "var(--font-size-sm)", padding: "4px 8px" }} />
+                            </td>
+                            <td style={{ padding: "var(--space-2) var(--space-3)" }}>
+                              <div className="flex items-center gap-1">
+                                <button className="btn btn-sm btn-primary" style={{ padding: "2px 8px", fontSize: "11px" }}
+                                  onClick={async () => {
+                                    await updateGlossaryTerm(gt.id, { term: editTerm, definition: editDefinition, aliases: editAliases });
+                                    setGlossaryTerms(prev => prev.map(t => t.id === gt.id ? { ...t, term: editTerm, definition: editDefinition, aliases: editAliases } : t));
+                                    setEditingTermId(null);
+                                    router.refresh();
+                                  }}
+                                >Save</button>
+                                <button className="btn btn-sm" style={{ padding: "2px 8px", fontSize: "11px" }}
+                                  onClick={() => setEditingTermId(null)}
+                                >✕</button>
+                              </div>
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td style={{ padding: "var(--space-2) var(--space-3)", fontWeight: 500 }}>{gt.term}</td>
+                            <td style={{ padding: "var(--space-2) var(--space-3)", color: "var(--color-text-secondary)" }}>{gt.definition}</td>
+                            <td style={{ padding: "var(--space-2) var(--space-3)", color: "var(--color-text-tertiary)", fontStyle: "italic" }}>{gt.aliases || "—"}</td>
+                            <td style={{ padding: "var(--space-2) var(--space-3)" }}>
+                              <div className="flex items-center gap-1">
+                                <button className="btn btn-sm" style={{ padding: "2px 8px", fontSize: "11px" }}
+                                  onClick={() => { setEditingTermId(gt.id); setEditTerm(gt.term); setEditDefinition(gt.definition); setEditAliases(gt.aliases); }}
+                                >Edit</button>
+                                <button className="btn btn-sm" style={{ padding: "2px 8px", fontSize: "11px", color: "var(--color-danger, #ef4444)" }}
+                                  onClick={async () => {
+                                    await deleteGlossaryTerm(gt.id);
+                                    setGlossaryTerms(prev => prev.filter(t => t.id !== gt.id));
+                                    router.refresh();
+                                  }}
+                                >✕</button>
+                              </div>
+                            </td>
+                          </>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Add new term form */}
+            <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
+              <input className="input" placeholder="Term" value={newTerm} onChange={(e) => setNewTerm(e.target.value)}
+                style={{ flex: "1 1 120px", fontSize: "var(--font-size-sm)", padding: "6px 10px", minWidth: "100px" }} />
+              <input className="input" placeholder="Definition" value={newDefinition} onChange={(e) => setNewDefinition(e.target.value)}
+                style={{ flex: "2 1 200px", fontSize: "var(--font-size-sm)", padding: "6px 10px", minWidth: "150px" }} />
+              <input className="input" placeholder="Aliases (comma-separated)" value={newAliases} onChange={(e) => setNewAliases(e.target.value)}
+                style={{ flex: "1 1 150px", fontSize: "var(--font-size-sm)", padding: "6px 10px", minWidth: "100px" }} />
+              <button className="btn btn-primary btn-sm" style={{ whiteSpace: "nowrap" }}
+                disabled={!newTerm.trim()}
+                onClick={async () => {
+                  const result = await addGlossaryTerm(project.id, newTerm.trim(), newDefinition.trim(), newAliases.trim());
+                  if (result.glossaryTerm) {
+                    setGlossaryTerms(prev => [...prev, result.glossaryTerm as GlossaryTerm]);
+                    setNewTerm(""); setNewDefinition(""); setNewAliases("");
+                    router.refresh();
+                  }
+                }}
+              >+ Add Term</button>
             </div>
           </div>
         )}
