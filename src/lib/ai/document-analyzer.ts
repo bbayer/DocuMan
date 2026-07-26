@@ -163,10 +163,19 @@ ${sectionReference}`;
 3. MAP the source document to the J-STD-016 section structure for ${docCategory}. Translate section titles to the detected language.
 4. IDENTIFY cross-cutting themes and constraints that apply across multiple requirements (safety, performance, security, etc.).
 5. IDENTIFY external system interfaces, protocols, and data formats.
-${docCategory === "SDD" ? `6. FOR SDD (Software Design Description):
+${
+  docCategory === "SSDD"
+    ? `6. FOR SSDD (System/Subsystem Design Description — System-Level Architecture):
+   - Identify candidate system components: Subsystems, HWCIs (Hardware), CSCIs (Software), and Manual Operations.
+   - Identify system interface buses, protocols, and data exchange structures for Markdown matrix formatting.
+   - Identify system execution concepts, state/mode controls, and resource allocations (processing/memory budgets).`
+    : docCategory === "SDD"
+    ? `6. FOR SDD (Software Design Description — CSCI/Software-Level Design):
    - Identify candidate software modules, components, and software units (e.g. Controllers, Managers, Processing Engines).
-   - Identify key data structures, data dictionary tables, and parameter schemas that will be specified in Markdown format.
-7. GENERATE a validation dictionary for the detected language:` : `6. GENERATE a validation dictionary for the detected language:`}
+   - Identify key data structures, data dictionary tables, and parameter schemas that will be specified in Markdown format.`
+    : ""
+}
+7. GENERATE a validation dictionary for the detected language:
    - ambiguousTerms: vague/imprecise terms that should NOT appear in formal requirements
    - obligationShall/Should/May: verb forms for mandatory/recommended/optional requirements
 

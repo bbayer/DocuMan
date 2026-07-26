@@ -92,7 +92,23 @@ erDiagram
 
 * **User**: Handles basic authentication and ownership profiles.
 * **Project**: Grouping boundary for documents and configurations.
-* **Document**: Manages metadata, category (`SRS`, `SDD`, `STP`, `IRS`, `CUSTOM`), lifecycle status (`DRAFT`, `REVIEW`, `PUBLISHED`), and major/minor version snapshots.
+* **Document**: Manages metadata, category (`SSS`, `SSDD`, `SRS`, `SDD`, `IRS`, `IDD`, `STP`, `CUSTOM`), lifecycle status (`DRAFT`, `REVIEW`, `PUBLISHED`), and major/minor version snapshots.
+
+---
+
+## 📜 Supported MIL-STD-498 & Superseding Standards
+
+DocuMan provides first-class support for MIL-STD-498 and modern superseding standards (EIA/IEEE J-STD-016, IEEE 1016-2009, ISO/IEC/IEEE 15288, and ISO/IEC/IEEE 42010):
+
+| Category | Standard Document Type | MIL-STD-498 DID | IEEE / ISO Superseding Standard | Purpose & Focus |
+| :--- | :--- | :--- | :--- | :--- |
+| **SSS** | System/Subsystem Specification | DI-IPSC-81431 | ISO/IEC/IEEE 29148 | High-level system & subsystem requirements |
+| **SSDD** | System/Subsystem Design Description | DI-IPSC-81432 | IEEE 1016 / ISO 42010 | System architecture, HW/SW component breakdown (HWCIs/CSCIs), operational concept, and system interface matrices |
+| **SRS** | Software Requirements Specification | DI-IPSC-81433 | IEEE 830 / ISO 29148 | Detailed software requirements for Computer Software Configuration Items (CSCIs) |
+| **SDD** | Software Design Description | DI-IPSC-81435 | IEEE 1016-2009 | CSCI software unit internal design, functions, data structures, and algorithms |
+| **IRS** | Interface Requirements Specification | DI-IPSC-81434 | ISO/IEC/IEEE 29148 | External system interface requirements |
+| **IDD** | Interface Design Description | DI-IPSC-81436 | IEEE 1016 | Detailed physical & logical interface message schemas and pinouts |
+| **STP** | Software Test Plan | DI-IPSC-81438 | IEEE 829 / ISO 29119 | Verification procedures, test environments, and qualification provisions |
 * **Requirement**: The core building block; holds text, classification (`TITLE`, `REQUIREMENT`, `PARAGRAPH`, `NOTE`), and hierarchical layout indices (`indentLevel`, `sortOrder`).
 * **RequirementVersion**: Historical audit log of individual requirement changes.
 * **TraceabilityLink**: Joins source and target requirements. Flags `isSuspect` if the target or source requirement updates.

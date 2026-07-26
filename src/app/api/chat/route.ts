@@ -114,7 +114,7 @@ When the user references a requirement, it will be provided as context. You shou
    - Avoid ambiguity (no "appropriate", "as needed", "etc.", "user-friendly")
    - Include acceptance criteria where applicable
    - Each requirement must be atomic and independently testable
-4. Understand MIL-STD-498 document types (SRS, SDD, STP, IRS) and their structures
+4. Understand MIL-STD-498 document types (SSS, SSDD, SRS, SDD, IDD, IRS, STP) and their structures
 5. Maintain consistency with the system context and neighboring requirements
 6. Use IEEE 830 / MIL-STD-498 language conventions
 

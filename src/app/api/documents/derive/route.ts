@@ -315,6 +315,7 @@ export async function POST(req: NextRequest) {
         title: r.title,
         content: r.content,
         category: r.category,
+        itemNumber: r.itemNumber,
       }));
 
       // Build glossary entries for validation

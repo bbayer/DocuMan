@@ -44,10 +44,12 @@ const statusBadgeClass: Record<string, string> = {
 
 const categoryLabels: Record<string, string> = {
   SSS: "System/Subsystem Specification",
+  SSDD: "System/Subsystem Design Description",
   SRS: "Software Requirements Specification",
   SDD: "Software Design Description",
   STP: "Software Test Plan",
   IRS: "Interface Requirements Specification",
+  IDD: "Interface Design Description",
   CUSTOM: "Custom Document",
 };
 
@@ -493,10 +495,12 @@ export function ProjectDetail({ project }: { project: Project }) {
                   }}
                 >
                   <option value="SSS">SSS — System/Subsystem Specification</option>
+                  <option value="SSDD">SSDD — System/Subsystem Design Description</option>
                   <option value="SRS">SRS — Software Requirements Specification</option>
                   <option value="SDD">SDD — Software Design Description</option>
                   <option value="STP">STP — Software Test Plan</option>
                   <option value="IRS">IRS — Interface Requirements Specification</option>
+                  <option value="IDD">IDD — Interface Design Description</option>
                   <option value="CUSTOM">Custom Document</option>
                 </select>
               </div>
@@ -1041,10 +1045,12 @@ function DocumentCard({
                 >
                   <option value="CUSTOM">Custom Document</option>
                   <option value="SSS">System/Subsystem Specification</option>
+                  <option value="SSDD">System/Subsystem Design Description</option>
                   <option value="SRS">Software Requirements Specification</option>
                   <option value="SDD">Software Design Description</option>
                   <option value="STP">Software Test Plan</option>
                   <option value="IRS">Interface Requirements Specification</option>
+                  <option value="IDD">Interface Design Description</option>
                 </select>
               </div>
             </div>

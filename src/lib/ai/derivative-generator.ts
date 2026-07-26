@@ -142,6 +142,23 @@ export async function breakDownRequirements(
   // Document-type-specific instructions
   if (docCategory === "SSS") {
     systemContext += "\n\nAnalyze the upstream requirements and synthesize overarching System/Subsystem Specifications. Describe system boundaries, operational capabilities, and behavioral models.";
+  } else if (docCategory === "SSDD") {
+    systemContext += "\n\nTranslate upstream System/Subsystem Specifications (SSS) or operational requirements into a comprehensive MIL-STD-498 DI-IPSC-81432 / IEEE 1016 System/Subsystem Design Description (SSDD).\n" +
+      "For each system requirement, derive system design elements across the following system engineering dimensions:\n" +
+      "1. SYSTEM ARCHITECTURE & ALLOCATION (HWCIs, CSCIs, MANUAL OPERATIONS):\n" +
+      "   - Explicitly allocate requirement implementation to specific System Components (e.g. Subsystem, Hardware Configuration Item [HWCI], Computer Software Configuration Item [CSCI], or Manual Operator Procedure).\n" +
+      "   - Specify physical and logical boundaries, state/mode controls, and system decomposition.\n" +
+      "2. SYSTEM CONCEPT OF EXECUTION & OPERATIONAL SCENARIOS:\n" +
+      "   - Describe end-to-end execution sequences, timing constraints, state transitions, and system initialization/shutdown routines.\n" +
+      "3. MARKDOWN TABLES FOR SYSTEM INTERFACES & MESSAGES:\n" +
+      "   - Format inter-component signals, bus messages, and protocol payloads as Markdown tables:\n" +
+      "     | Message / Signal | Source Element | Target Element | Protocol / Medium | Data Payload | Frequency / Latency |\n" +
+      "     | RadarTrackData | RadarHWCI | SignalProcessingCSCI | PCIe / Ethernet | TrackStruct (64 bytes) | 100 Hz / < 5ms |\n" +
+      "   - For system memory, processing budgets, or hardware resource allocation:\n" +
+      "     | Resource / Component | Allocated Budget | Unit | Criticality / Margin |\n" +
+      "     | CPU Utilization | 45% peak | % | High (30% head room) |\n" +
+      "4. SAFETY, SECURITY & FAULT TOLERANCE:\n" +
+      "   - Define system redundancy, fail-over behaviors, error recovery mechanisms, and safety interlocks.";
   } else if (docCategory === "SRS") {
     systemContext += "\n\nAnalyze the upstream requirements and break them down into granular, atomic, and testable Software Requirements (functional, non-functional, interface constraints).";
   } else if (docCategory === "SDD") {
@@ -165,6 +182,8 @@ export async function breakDownRequirements(
     systemContext += "\n\nFrame the upstream requirements as Software Test Plans. Describe testable verification procedures and overarching test cases needed to satisfy the requirements.";
   } else if (docCategory === "IRS") {
     systemContext += "\n\nExtract external system boundaries, protocols, and data exchange formats for an Interface Requirements Specification.";
+  } else if (docCategory === "IDD") {
+    systemContext += "\n\nExtract and formulate detailed Interface Design Specifications (IDD) following MIL-STD-498 DI-IPSC-81436. Specify exact message structures, pinouts, registers, and protocol timing in Markdown table formats.";
   } else {
     systemContext += "\n\nBreak down the upstream requirements into logically structured, atomic, and granular lower-level elements tailored for technical implementation.";
   }

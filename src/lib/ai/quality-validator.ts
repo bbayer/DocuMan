@@ -39,6 +39,7 @@ export interface RequirementInput {
   title: string;
   content: string;
   category: string;
+  itemNumber?: string;
 }
 
 export interface GlossaryEntry {
@@ -309,7 +310,9 @@ export function validateRequirements(
   if (expectedSections && expectedSections.length > 0) {
     for (const section of expectedSections) {
       const hasReq = requirements.some((r) =>
-        r.id.startsWith(section.section),
+        (r.itemNumber && (r.itemNumber === section.section || r.itemNumber.startsWith(section.section + "."))) ||
+        (r.uniqueId && r.uniqueId.startsWith(section.section)) ||
+        r.id.startsWith(section.section)
       );
       if (hasReq) {
         sectionsPopulated++;
