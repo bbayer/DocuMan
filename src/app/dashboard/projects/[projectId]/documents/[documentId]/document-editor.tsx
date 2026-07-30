@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -9,8 +9,11 @@ import {
   deleteRequirement,
   updateDocumentStatus,
   dismissReviewFlag,
+  repairDocumentStructure,
 } from "@/app/actions";
+import { generateExportDocumentHtml } from "@/lib/export/html-exporter";
 import { AIChatPanel } from "./ai-chat-panel";
+import { MermaidViewer } from "@/components/mermaid-viewer";
 
 interface Requirement {
   id: string;
@@ -66,95 +69,213 @@ const statusBadge: Record<string, string> = {
   PUBLISHED: "badge badge-published",
 };
 
-function renderFormattedContent(text: string) {
+function renderInlineMarkdown(str: string, keyPrefix: string = "inline"): React.ReactNode {
+  if (!str) return null;
+
+  const brParts = str.split(/(?:<br\s*\/?>|\n)/gi);
+
+  return brParts.map((part, pIdx) => {
+    const trimmed = part.trim();
+    const isBullet = /^[*-]\s+/.test(trimmed);
+    const contentToParse = isBullet ? trimmed.replace(/^[*-]\s+/, "") : part;
+
+    const tokens: React.ReactNode[] = [];
+    let keyIdx = 0;
+
+    if (isBullet) {
+      tokens.push(
+        <span key={`${keyPrefix}-${pIdx}-bullet`} style={{ color: "var(--color-primary, #3b82f6)", fontWeight: "bold", marginRight: "6px" }}>
+          •
+        </span>
+      );
+    }
+
+    const regex = /(\*\*.*?\*\*|`.*?`|\*.*?\*|__.*?__|_[^_]+_)/g;
+    let match;
+    let lastIndex = 0;
+
+    while ((match = regex.exec(contentToParse)) !== null) {
+      if (match.index > lastIndex) {
+        tokens.push(
+          <React.Fragment key={`${keyPrefix}-${pIdx}-txt-${keyIdx++}`}>
+            {contentToParse.substring(lastIndex, match.index)}
+          </React.Fragment>
+        );
+      }
+
+      const tokenStr = match[0];
+      if ((tokenStr.startsWith("**") && tokenStr.endsWith("**")) || (tokenStr.startsWith("__") && tokenStr.endsWith("__"))) {
+        tokens.push(<strong key={`${keyPrefix}-${pIdx}-b-${keyIdx++}`}>{tokenStr.slice(2, -2)}</strong>);
+      } else if (tokenStr.startsWith("`") && tokenStr.endsWith("`")) {
+        tokens.push(
+          <code key={`${keyPrefix}-${pIdx}-c-${keyIdx++}`} style={{ background: "var(--color-bg-tertiary, #f1f5f9)", padding: "2px 5px", borderRadius: "4px", fontFamily: "monospace", fontSize: "0.85em" }}>
+            {tokenStr.slice(1, -1)}
+          </code>
+        );
+      } else if ((tokenStr.startsWith("*") && tokenStr.endsWith("*")) || (tokenStr.startsWith("_") && tokenStr.endsWith("_"))) {
+        tokens.push(<em key={`${keyPrefix}-${pIdx}-i-${keyIdx++}`}>{tokenStr.slice(1, -1)}</em>);
+      } else {
+        tokens.push(
+          <React.Fragment key={`${keyPrefix}-${pIdx}-str-${keyIdx++}`}>
+            {tokenStr}
+          </React.Fragment>
+        );
+      }
+
+      lastIndex = regex.lastIndex;
+    }
+
+    if (lastIndex < contentToParse.length) {
+      tokens.push(
+        <React.Fragment key={`${keyPrefix}-${pIdx}-end-${keyIdx++}`}>
+          {contentToParse.substring(lastIndex)}
+        </React.Fragment>
+      );
+    }
+
+    return (
+      <React.Fragment key={`${keyPrefix}-br-${pIdx}`}>
+        {pIdx > 0 && <br />}
+        {tokens}
+      </React.Fragment>
+    );
+  });
+}
+
+function renderFormattedContent(text: string, keyPrefix: string = "fmt"): React.ReactNode {
   if (!text) return null;
 
-  if (text.includes("|") && text.includes("\n")) {
-    const lines = text.split("\n");
-    const elements: React.ReactNode[] = [];
-    let tableBuffer: string[] = [];
-    let textBuffer: string[] = [];
-
-    const flushText = (key: string) => {
-      if (textBuffer.length > 0) {
-        elements.push(
-          <div key={key} style={{ whiteSpace: "pre-wrap" }}>
-            {textBuffer.join("\n")}
-          </div>
-        );
-        textBuffer = [];
-      }
-    };
-
-    const flushTable = (key: string) => {
-      if (tableBuffer.length >= 2) {
-        const rows = tableBuffer
-          .map((line) => line.trim())
-          .filter((line) => line.startsWith("|") && line.endsWith("|"))
-          .map((line) =>
-            line
-              .slice(1, -1)
-              .split("|")
-              .map((cell) => cell.trim())
+  if (text.includes("```mermaid")) {
+    const parts = text.split(/(```mermaid[\s\S]*?```)/g);
+    return (
+      <React.Fragment key={`${keyPrefix}-mblock`}>
+        {parts.map((part, pIdx) => {
+          if (part.startsWith("```mermaid")) {
+            const mermaidCode = part.replace(/^```mermaid\s*/, "").replace(/```$/, "").trim();
+            return <MermaidViewer key={`${keyPrefix}-mdiv-${pIdx}`} chart={mermaidCode} />;
+          }
+          return (
+            <React.Fragment key={`${keyPrefix}-mpart-${pIdx}`}>
+              {renderFormattedContent(part, `${keyPrefix}-mp-${pIdx}`)}
+            </React.Fragment>
           );
-
-        if (rows.length >= 2) {
-          const header = rows[0];
-          const dataRows = rows.slice(1).filter(
-            (row) => !row.every((cell) => /^[-:\s]+$/.test(cell))
-          );
-
-          elements.push(
-            <div key={key} className="md-table-wrapper">
-              <table className="md-table">
-                <thead>
-                  <tr>
-                    {header.map((col, idx) => (
-                      <th key={idx}>{col}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {dataRows.map((row, rIdx) => (
-                    <tr key={rIdx}>
-                      {row.map((cell, cIdx) => (
-                        <td key={cIdx}>{cell}</td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          );
-          tableBuffer = [];
-          return;
-        }
-      }
-      textBuffer.push(...tableBuffer);
-      tableBuffer = [];
-    };
-
-    lines.forEach((line, idx) => {
-      const trimmed = line.trim();
-      const isTableLine = trimmed.startsWith("|") && trimmed.endsWith("|");
-      if (isTableLine) {
-        flushText(`text-${idx}`);
-        tableBuffer.push(line);
-      } else {
-        if (tableBuffer.length > 0) {
-          flushTable(`table-${idx}`);
-        }
-        textBuffer.push(line);
-      }
-    });
-
-    if (tableBuffer.length > 0) flushTable("table-end");
-    flushText("text-end");
-
-    return <>{elements}</>;
+        })}
+      </React.Fragment>
+    );
   }
 
-  return <div style={{ whiteSpace: "pre-wrap" }}>{text}</div>;
+  const lines = text.split("\n");
+  const elements: React.ReactNode[] = [];
+  let tableBuffer: string[] = [];
+  let listBuffer: string[] = [];
+  let textBuffer: string[] = [];
+
+  const flushText = (key: string) => {
+    if (textBuffer.length > 0) {
+      const fullText = textBuffer.join("\n").trim();
+      if (fullText) {
+        elements.push(
+          <div key={key} style={{ lineHeight: 1.6, marginBottom: "8px" }}>
+            {renderInlineMarkdown(fullText, `${key}-inline`)}
+          </div>
+        );
+      }
+      textBuffer = [];
+    }
+  };
+
+  const flushList = (key: string) => {
+    if (listBuffer.length > 0) {
+      elements.push(
+        <ul key={key} style={{ paddingLeft: "20px", margin: "6px 0", lineHeight: 1.6 }}>
+          {listBuffer.map((item, iIdx) => (
+            <li key={`li-${iIdx}`} style={{ marginBottom: "3px" }}>
+              {renderInlineMarkdown(item, `${key}-li-${iIdx}`)}
+            </li>
+          ))}
+        </ul>
+      );
+      listBuffer = [];
+    }
+  };
+
+  const flushTable = (key: string) => {
+    if (tableBuffer.length >= 2) {
+      const rows = tableBuffer
+        .map((line) => line.trim())
+        .filter((line) => line.startsWith("|") && line.endsWith("|"))
+        .map((line) =>
+          line
+            .slice(1, -1)
+            .split("|")
+            .map((cell) => cell.trim())
+        );
+
+      if (rows.length >= 2) {
+        const header = rows[0];
+        const dataRows = rows.slice(1).filter(
+          (row) => !row.every((cell) => /^[-:\s]+$/.test(cell))
+        );
+
+        elements.push(
+          <div key={key} className="md-table-wrapper" style={{ overflowX: "auto", margin: "10px 0" }}>
+            <table className="md-table" style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  {header.map((col, idx) => (
+                    <th key={`th-${idx}`} style={{ padding: "8px 12px", textTransform: "none", fontSize: "0.85rem" }}>
+                      {renderInlineMarkdown(col, `${key}-th-${idx}`)}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {dataRows.map((row, rIdx) => (
+                  <tr key={`tr-${rIdx}`}>
+                    {row.map((cell, cIdx) => (
+                      <td key={`td-${cIdx}`} style={{ padding: "8px 12px", fontSize: "0.85rem", verticalAlign: "top" }}>
+                        {renderInlineMarkdown(cell, `${key}-td-${rIdx}-${cIdx}`)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+        tableBuffer = [];
+        return;
+      }
+    }
+    textBuffer.push(...tableBuffer);
+    tableBuffer = [];
+  };
+
+  lines.forEach((line, idx) => {
+    const trimmed = line.trim();
+    const isTableLine = trimmed.startsWith("|") && trimmed.endsWith("|");
+    const isBulletLine = /^[-*]\s+/.test(trimmed);
+
+    if (isTableLine) {
+      flushText(`text-${idx}`);
+      flushList(`list-${idx}`);
+      tableBuffer.push(line);
+    } else if (isBulletLine) {
+      flushText(`text-${idx}`);
+      flushTable(`table-${idx}`);
+      listBuffer.push(trimmed.replace(/^[-*]\s+/, ""));
+    } else {
+      flushTable(`table-${idx}`);
+      flushList(`list-${idx}`);
+      textBuffer.push(line);
+    }
+  });
+
+  if (tableBuffer.length > 0) flushTable("table-end");
+  if (listBuffer.length > 0) flushList("list-end");
+  flushText("text-end");
+
+  return <React.Fragment key={keyPrefix}>{elements}</React.Fragment>;
 }
 
 export function DocumentEditor({
@@ -249,6 +370,33 @@ export function DocumentEditor({
     setChatOpen(true);
   }
 
+  function handleExportHtml() {
+    const htmlContent = generateExportDocumentHtml({
+      title: doc.title,
+      docCategory: doc.docCategory,
+      status: doc.status,
+      majorVersion: doc.majorVersion,
+      minorVersion: doc.minorVersion,
+      requirements: doc.requirements || [],
+    });
+    const fileName = `${doc.title.replace(/[^a-zA-Z0-9]/g, "_")}.html`;
+    const blob = new Blob([htmlContent], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  async function handleRepairStructure() {
+    if (!confirm("Re-order and re-number document structure into sequential tree order?")) return;
+    const res = await repairDocumentStructure(doc.id, projectId);
+    if (res?.error) alert(res.error);
+  }
+
   return (
     <div style={{ position: "relative" }}>
       {/* Header */}
@@ -273,8 +421,33 @@ export function DocumentEditor({
             </div>
           </div>
 
-          {/* Status actions */}
+          {/* Status & Export & Repair actions */}
           <div className="flex items-center gap-3">
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={handleRepairStructure}
+              title="Fix / Re-order Document Structure & Numbering"
+              style={{ display: "flex", alignItems: "center", gap: "6px" }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+              </svg>
+              Fix Structure & Numbering
+            </button>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={handleExportHtml}
+              title="Export HTML / Print to PDF"
+              style={{ display: "flex", alignItems: "center", gap: "6px" }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              Export HTML / PDF
+            </button>
             {doc.status === "DRAFT" && (
               <button
                 className="btn btn-secondary btn-sm"

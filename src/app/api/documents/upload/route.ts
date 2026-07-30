@@ -27,11 +27,13 @@ export async function POST(request: NextRequest) {
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       "text/plain",
       "text/csv",
+      "text/tab-separated-values",
+      "text/tsv",
     ];
     const ext = file.name.split(".").pop()?.toLowerCase();
-    if (!allowedTypes.includes(file.type) && !["pdf", "docx", "txt", "csv"].includes(ext || "")) {
+    if (!allowedTypes.includes(file.type) && !["pdf", "docx", "txt", "csv", "tsv"].includes(ext || "")) {
       return NextResponse.json(
-        { error: "Unsupported file type. Use PDF, DOCX, TXT, or CSV." },
+        { error: "Unsupported file type. Use PDF, DOCX, TXT, CSV, or TSV." },
         { status: 400 }
       );
     }
@@ -47,8 +49,8 @@ export async function POST(request: NextRequest) {
     await mkdir(path.dirname(storagePath), { recursive: true });
     await writeFile(storagePath, buffer);
 
-    // ── CSV structured fast-path ─────────────────────────
-    const isCsv = file.type === "text/csv" || ext === "csv";
+    // ── CSV / TSV structured fast-path ───────────────────
+    const isCsv = file.type === "text/csv" || file.type === "text/tab-separated-values" || file.type === "text/tsv" || ext === "csv" || ext === "tsv";
     if (isCsv) {
       const csvResult = await parseCsvDocument(buffer);
 

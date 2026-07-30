@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
-import { breakDownRequirements, DerivationContext } from "@/lib/ai/derivative-generator";
+import { breakDownRequirements, DerivationContext, DerivedItemOutput } from "@/lib/ai/derivative-generator";
 import { analyzeSourceDocument } from "@/lib/ai/document-analyzer";
 import { validateRequirements, mergeWithDefaults, type RequirementInput } from "@/lib/ai/quality-validator";
 import { getSectionsForCategory } from "@/lib/standards/j-std-016";
@@ -138,160 +138,157 @@ export async function POST(req: NextRequest) {
       const dedupedGlossary = Array.from(glossaryMap.values());
 
       // ═══════════════════════════════════════════════════════════════
-      // PASS 2: GENERATION — chunked, with cross-chunk memory
+      // PASS 2: OUTLINE INITIALIZATION & GENERATION
       // ═══════════════════════════════════════════════════════════════
 
-      let globalIdIndex = 1;
-      const previouslyGenerated: string[] = []; // Running summary for dedup
+      await send({ progress: 18, status: "🏗️ Building target document section outline..." });
 
-      // Filter requirements vs structural elements
-      const chunks: { type: "STRUCTURAL" | "REQUIREMENTS", items: typeof parentReqs }[] = [];
-      let currentReqChunk: typeof parentReqs = [];
-      const MAX_CHUNK_SIZE = 5;
+      // 1. Determine target outline sections
+      const targetSections = (analysis.outline && analysis.outline.length > 0)
+        ? analysis.outline
+        : getSectionsForCategory(docCategory).map((s) => ({
+            sectionNumber: s.section,
+            sectionTitle: s.title,
+            description: "",
+          }));
 
-      for (const pr of parentReqs) {
-        if (pr.category === "REQUIREMENT") {
-            currentReqChunk.push(pr);
-            if (currentReqChunk.length >= MAX_CHUNK_SIZE) {
-                chunks.push({ type: "REQUIREMENTS", items: currentReqChunk });
-                currentReqChunk = [];
-            }
-        } else {
-            if (currentReqChunk.length > 0) {
-                chunks.push({ type: "REQUIREMENTS", items: currentReqChunk });
-                currentReqChunk = [];
-            }
-            chunks.push({ type: "STRUCTURAL", items: [pr] });
-        }
-      }
-      if (currentReqChunk.length > 0) {
-          chunks.push({ type: "REQUIREMENTS", items: currentReqChunk });
+      const targetSectionNumbers = new Set(targetSections.map((s) => s.sectionNumber));
+
+      // 2. Batch parent requirements into chunks for generation
+      const parentRequirementsOnly = parentReqs.filter((r) => r.category === "REQUIREMENT");
+      const parentItemsToProcess = parentRequirementsOnly.length > 0 ? parentRequirementsOnly : parentReqs;
+
+      const CHUNK_SIZE = 5;
+      const parentChunks: (typeof parentItemsToProcess)[] = [];
+      for (let i = 0; i < parentItemsToProcess.length; i += CHUNK_SIZE) {
+        parentChunks.push(parentItemsToProcess.slice(i, i + CHUNK_SIZE));
       }
 
-      let processedCount = 0;
-      const totalElements = parentReqs.length;
-      let globalSortOrder = 0;
-      let chunkIndex = 0;
-      const totalChunks = chunks.filter((c) => c.type === "REQUIREMENTS").length;
+      const previouslyGenerated: string[] = [];
+      const sectionBucket = new Map<string, DerivedItemOutput[]>();
 
-      // Track all generated requirement IDs for validation pass
-      const generatedRequirementIds: string[] = [];
+      for (let cIdx = 0; cIdx < parentChunks.length; cIdx++) {
+        const chunk = parentChunks[cIdx];
+        const pct = Math.floor(20 + ((cIdx / parentChunks.length) * 70));
+        await send({
+          progress: pct,
+          status: `⚙️ Generating design elements... (chunk ${cIdx + 1}/${parentChunks.length})`,
+        });
 
-      for (const chunk of chunks) {
-         if (chunk.type === "STRUCTURAL") {
-            const pr = chunk.items[0];
-            const derivedReq = await prisma.requirement.create({
-                data: {
-                  documentId: doc.id,
-                  itemNumber: pr.itemNumber,
-                  uniqueId: `${docCategory}-${pr.uniqueId}`,
-                  category: pr.category,
-                  title: pr.title,
-                  content: pr.content,
-                  sortOrder: globalSortOrder++,
-                  indentLevel: pr.indentLevel,
-                },
-            });
-            await prisma.traceabilityLink.create({
-              data: { sourceRequirementId: derivedReq.id, targetRequirementId: pr.id, linkType: "DERIVED_FROM" }
-            });
+        const derivationContext: DerivationContext = {
+          projectAiContext: project?.aiContext || undefined,
+          documentTitle: parentDocument?.title || undefined,
+          extraInstructions: extraInstructions || undefined,
+          reasoningEffort: reasoningEffort || undefined,
+          language: analysis.language,
+          glossary: dedupedGlossary,
+          targetOutline: targetSections,
+          themes: analysis.themes.length > 0 ? analysis.themes : undefined,
+          previouslyGenerated: previouslyGenerated.slice(-30),
+        };
 
-            processedCount++;
-            const pct = Math.floor(15 + ((processedCount / totalElements) * 75));
-            await send({ progress: pct, status: `Copied structure: ${pr.title || "Paragraph"}` });
-         } else {
-            chunkIndex++;
-            // Compute section headings for this chunk
-            const firstItemIndex = parentReqs.indexOf(chunk.items[0]);
-            const sectionHeadings: string[] = [];
-            const seenLevels = new Set<number>();
-            for (let si = firstItemIndex - 1; si >= 0; si--) {
-              const pr = parentReqs[si];
-              if (pr.category === "TITLE" && !seenLevels.has(pr.indentLevel)) {
-                sectionHeadings.unshift(`${pr.itemNumber} ${pr.title || pr.content}`.trim());
-                seenLevels.add(pr.indentLevel);
+        const derivedItems = await breakDownRequirements(chunk, docCategory, derivationContext);
+
+        for (const item of derivedItems) {
+          // Resolve target section number
+          let secNum = item.targetSectionNumber || "3.1";
+          if (!targetSectionNumbers.has(secNum)) {
+            let matched = false;
+            for (const tSec of targetSections) {
+              if (secNum.startsWith(tSec.sectionNumber)) {
+                secNum = tSec.sectionNumber;
+                matched = true;
+                break;
               }
             }
+            if (!matched) secNum = targetSections[0]?.sectionNumber || "3.1";
+          }
 
-            // Build context with cross-chunk memory
-            const derivationContext: DerivationContext = {
-              projectAiContext: project?.aiContext || undefined,
-              documentTitle: parentDocument?.title || undefined,
-              sectionHeadings: sectionHeadings.length > 0 ? sectionHeadings : undefined,
-              extraInstructions: extraInstructions || undefined,
-              reasoningEffort: reasoningEffort || undefined,
-              // ── New: analysis pass outputs ──
-              language: analysis.language,
-              glossary: dedupedGlossary,
-              targetOutline: analysis.outline.map((s) => ({
-                sectionNumber: s.sectionNumber,
-                sectionTitle: s.sectionTitle,
-              })),
-              themes: analysis.themes.length > 0 ? analysis.themes : undefined,
-              previouslyGenerated: previouslyGenerated.length > 0 ? previouslyGenerated : undefined,
-            };
+          const bucket = sectionBucket.get(secNum) || [];
+          bucket.push(item);
+          sectionBucket.set(secNum, bucket);
 
-            const pctBefore = Math.floor(15 + ((processedCount / totalElements) * 75));
-            await send({ progress: pctBefore, status: `⚙️ Generating requirements... (chunk ${chunkIndex}/${totalChunks})` });
+          previouslyGenerated.push(`${secNum}: ${item.title || item.content.slice(0, 80)}`);
+        }
+      }
 
-            // Process AI chunk
-            const derivedResults = await breakDownRequirements(chunk.items, docCategory, derivationContext);
+      // 3. Sequential Tree Assembly: Write Section TITLEs and Paragraphs in exact outline order
+      let currentSortOrder = 0;
+      let globalIdIndex = 1;
+      const generatedRequirementIds: string[] = [];
 
-            // Save results
-            for (const pr of chunk.items) {
-               processedCount++;
-               const relevantDerived = derivedResults.filter(d => d.parentRequirementId === pr.id);
-               
-               if (relevantDerived.length === 0) {
-                   const formattedId = `${docCategory}-${String(globalIdIndex).padStart(3, '0')}`;
-                   globalIdIndex++;
-                   const dr = await prisma.requirement.create({
-                      data: {
-                        documentId: doc.id,
-                        itemNumber: pr.itemNumber,
-                        uniqueId: formattedId,
-                        category: "REQUIREMENT",
-                        title: pr.title,
-                        content: pr.content,
-                        sortOrder: globalSortOrder++,
-                        indentLevel: pr.indentLevel,
-                      }
-                   });
-                   await prisma.traceabilityLink.create({ data: { sourceRequirementId: dr.id, targetRequirementId: pr.id, linkType: "DERIVED_FROM" } });
-                   generatedRequirementIds.push(dr.id);
-                   // Add to running summary for next chunk
-                   previouslyGenerated.push(`${formattedId}: ${pr.title || pr.content.slice(0, 80)}`);
-               } else {
-                   for (let di = 0; di < relevantDerived.length; di++) {
-                       const derivedItem = relevantDerived[di];
-                       const formattedId = `${docCategory}-${String(globalIdIndex).padStart(3, '0')}`;
-                       globalIdIndex++;
-                       const derivedItemNumber = relevantDerived.length > 1
-                         ? `${pr.itemNumber}.${di + 1}`
-                         : pr.itemNumber;
-                       const dr = await prisma.requirement.create({
-                          data: {
-                            documentId: doc.id,
-                            itemNumber: derivedItemNumber,
-                            uniqueId: formattedId,
-                            category: "REQUIREMENT",
-                            title: derivedItem.title,
-                            content: derivedItem.content,
-                            sortOrder: globalSortOrder++,
-                            indentLevel: pr.indentLevel,
-                          }
-                       });
-                       await prisma.traceabilityLink.create({ data: { sourceRequirementId: dr.id, targetRequirementId: pr.id, linkType: "DERIVED_FROM" } });
-                       generatedRequirementIds.push(dr.id);
-                       // Add to running summary for next chunk
-                       previouslyGenerated.push(`${formattedId}: ${derivedItem.title || derivedItem.content.slice(0, 80)}`);
-                   }
-               }
+      for (const sec of targetSections) {
+        const dots = (sec.sectionNumber.match(/\./g) || []).length;
+        const secIndentLevel = Math.min(dots, 3);
 
-               const pct = Math.floor(15 + ((processedCount / totalElements) * 75));
-               await send({ progress: pct, status: `⚙️ Generating requirements... (chunk ${chunkIndex}/${totalChunks})` });
-            }
-         }
+        // Create Section TITLE node in database
+        await prisma.requirement.create({
+          data: {
+            documentId: doc.id,
+            itemNumber: sec.sectionNumber,
+            uniqueId: `${docCategory}-SEC-${sec.sectionNumber}`,
+            category: "TITLE",
+            title: sec.sectionTitle,
+            content: sec.description || "",
+            sortOrder: currentSortOrder++,
+            indentLevel: secIndentLevel,
+          },
+        });
+
+        // Insert items for this section immediately after the TITLE node
+        const sectionItems = sectionBucket.get(sec.sectionNumber) || [];
+        let childIdx = 1;
+
+        for (const item of sectionItems) {
+          let itemCategory = item.category || "PARAGRAPH";
+          if (docCategory === "SSDD" && itemCategory === "REQUIREMENT") {
+            itemCategory = "PARAGRAPH";
+          }
+
+          let itemNumber = item.targetSectionNumber;
+          if (itemCategory === "REQUIREMENT" || itemCategory === "PARAGRAPH") {
+            itemNumber = `${sec.sectionNumber}.${childIdx++}`;
+          }
+
+          // Strip leading item numbers from title if AI prefixed them (e.g. "1.2.1 Title" -> "Title")
+          let cleanTitle = (item.title || "").trim();
+          cleanTitle = cleanTitle.replace(/^(\d+\.)+\d*\s*/, "");
+
+          const formattedId = `${docCategory}-${String(globalIdIndex).padStart(3, "0")}`;
+          globalIdIndex++;
+
+          const dr = await prisma.requirement.create({
+            data: {
+              documentId: doc.id,
+              itemNumber: itemNumber || sec.sectionNumber,
+              uniqueId: formattedId,
+              category: itemCategory,
+              title: cleanTitle,
+              content: item.content || "",
+              sortOrder: currentSortOrder++,
+              indentLevel: secIndentLevel + (itemCategory === "REQUIREMENT" ? 1 : 0),
+            },
+          });
+
+          // Link to parent requirement if provided and exists
+          const parentId = item.parentRequirementId;
+          const parentReq = parentReqs.find(
+            (pr) => pr.id === parentId || pr.uniqueId === parentId || pr.itemNumber === parentId
+          );
+          if (parentReq) {
+            await prisma.traceabilityLink.create({
+              data: {
+                sourceRequirementId: dr.id,
+                targetRequirementId: parentReq.id,
+                linkType: "DERIVED_FROM",
+              },
+            });
+          }
+
+          if (itemCategory === "REQUIREMENT") {
+            generatedRequirementIds.push(dr.id);
+          }
+        }
       }
 
       // ═══════════════════════════════════════════════════════════════
@@ -341,20 +338,31 @@ export async function POST(req: NextRequest) {
 
       await send({ progress: 95, status: "✅ Flagging requirements for review..." });
 
+      // Build a mapping from id, uniqueId, and itemNumber to database UUID
+      const reqIdMap = new Map<string, string>();
+      for (const r of generatedReqs) {
+        reqIdMap.set(r.id, r.id);
+        reqIdMap.set(r.uniqueId, r.id);
+        if (r.itemNumber) reqIdMap.set(r.itemNumber, r.id);
+      }
+
       // Flag requirements that have warnings
-      const requirementWarnings = new Map<string, string[]>();
+      const dbReqWarnings = new Map<string, string[]>();
       for (const warning of validationResult.warnings) {
         if (warning.requirementId) {
-          const reasons = requirementWarnings.get(warning.requirementId) || [];
-          reasons.push(`[${warning.type}] ${warning.message}`);
-          requirementWarnings.set(warning.requirementId, reasons);
+          const dbId = reqIdMap.get(warning.requirementId);
+          if (dbId) {
+            const reasons = dbReqWarnings.get(dbId) || [];
+            reasons.push(`[${warning.type}] ${warning.message}`);
+            dbReqWarnings.set(dbId, reasons);
+          }
         }
       }
 
-      // Batch update flagged requirements
-      for (const [reqId, reasons] of requirementWarnings) {
+      // Batch update flagged requirements by their actual database UUID
+      for (const [dbId, reasons] of dbReqWarnings) {
         await prisma.requirement.update({
-          where: { id: reqId },
+          where: { id: dbId },
           data: {
             requiresReview: true,
             reviewReason: reasons.join(" | "),
@@ -377,7 +385,7 @@ export async function POST(req: NextRequest) {
         data: { generationMeta: JSON.stringify(fullGenerationMeta) },
       });
 
-      const flaggedCount = requirementWarnings.size;
+      const flaggedCount = dbReqWarnings.size;
       const totalGenerated = generatedReqs.length;
 
       await send({
@@ -386,10 +394,14 @@ export async function POST(req: NextRequest) {
         documentId: doc.id,
       });
     } catch (e) {
-      console.error(e);
-      await send({ error: String(e) });
+      console.error("Derivation error:", e);
+      try {
+        await send({ error: String(e) });
+      } catch {}
     } finally {
-      await writer.close();
+      try {
+        await writer.close();
+      } catch {}
     }
   })();
 

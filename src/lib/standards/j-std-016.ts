@@ -134,7 +134,7 @@ export const IRS_SECTIONS: SectionTemplate[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// SSDD — System/Subsystem Design Description (DI-IPSC-81432)
+// SSDD — System/Subsystem Design Description (MIL-STD-498 DI-IPSC-81432 / PPI PPA-003461-5)
 // ---------------------------------------------------------------------------
 export const SSDD_SECTIONS: SectionTemplate[] = [
   { section: "1", title: "Scope" },
@@ -143,17 +143,18 @@ export const SSDD_SECTIONS: SectionTemplate[] = [
   { section: "1.3", title: "Document overview" },
   { section: "2", title: "Referenced documents" },
   { section: "3", title: "System-wide design decisions" },
-  { section: "3.1", title: "System architectural decisions & constraints" },
-  { section: "3.2", title: "Design decisions on operational concept & behavior" },
-  { section: "3.3", title: "Design decisions on safety, security, privacy & fault tolerance" },
+  { section: "3.1", title: "System architectural design decisions" },
+  { section: "3.2", title: "System operational concept decisions" },
+  { section: "3.3", title: "System safety, security, and privacy decisions" },
   { section: "4", title: "System architectural design" },
-  { section: "4.1", title: "System component breakdown (Subsystems, HWCIs, CSCIs, Manual Operations)" },
+  { section: "4.1", title: "System component breakdown & component allocation" },
   { section: "4.2", title: "Concept of execution & operational scenarios" },
   { section: "4.3", title: "System interface design & data flow architecture" },
   { section: "5", title: "System detailed design" },
-  { section: "5.1", title: "Detailed design of system components (Subsystems/HW/SW)" },
-  { section: "5.2", title: "System interface detailed specifications & message schemas" },
-  { section: "5.3", title: "System element allocations & resource budgets (memory, processing, bandwidth)" },
+  { section: "5.1", title: "System detailed design overview" },
+  { section: "5.2", title: "System functional architecture & functional detailed design" },
+  { section: "5.3", title: "System interface detailed specifications" },
+  { section: "5.4", title: "System resource allocation & performance budgets" },
   { section: "6", title: "Requirements traceability" },
   { section: "7", title: "Notes" },
 ];

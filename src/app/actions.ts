@@ -312,3 +312,52 @@ export async function dismissReviewFlag(requirementId: string) {
   revalidatePath(`/dashboard/projects/${req.document.projectId}/documents/${req.document.id}`);
   return { success: true };
 }
+
+// ─── Repair Document Structure & Numbering ───────────────
+
+import { getSectionsForCategory } from "@/lib/standards/j-std-016";
+
+export async function repairDocumentStructure(documentId: string, projectId: string) {
+  const doc = await prisma.document.findUnique({
+    where: { id: documentId },
+    include: {
+      requirements: {
+        orderBy: { sortOrder: "asc" },
+      },
+    },
+  });
+
+  if (!doc) return { error: "Document not found" };
+
+  let currentSortOrder = 0;
+  let activeSectionNumber = "1.1";
+  let childIdx = 1;
+
+  for (const item of doc.requirements) {
+    if (item.category === "TITLE") {
+      activeSectionNumber = item.itemNumber || activeSectionNumber;
+      childIdx = 1;
+
+      await prisma.requirement.update({
+        where: { id: item.id },
+        data: { sortOrder: currentSortOrder++ },
+      });
+    } else {
+      const newItemNumber = `${activeSectionNumber}.${childIdx++}`;
+      let cleanTitle = (item.title || "").trim();
+      cleanTitle = cleanTitle.replace(/^(\d+\.)+\d*\s*/, "");
+
+      await prisma.requirement.update({
+        where: { id: item.id },
+        data: {
+          itemNumber: newItemNumber,
+          title: cleanTitle,
+          sortOrder: currentSortOrder++,
+        },
+      });
+    }
+  }
+
+  revalidatePath(`/dashboard/projects/${projectId}/documents/${documentId}`);
+  return { success: true };
+}

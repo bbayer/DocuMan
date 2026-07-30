@@ -132,7 +132,7 @@ export default function UploadPage() {
         </div>
         <h1 className="page-title">Upload Document</h1>
         <p className="page-subtitle">
-          Upload a PDF, DOCX, TXT, or CSV file to extract and structure requirements using AI
+          Upload a PDF, DOCX, TXT, CSV, or TSV file to extract and structure requirements using AI
         </p>
       </div>
 
@@ -173,12 +173,12 @@ export default function UploadPage() {
             Drop your document here or click to browse
           </div>
           <div className="drop-zone-subtitle">
-            Supports PDF, DOCX, TXT, and CSV files
+            Supports PDF, DOCX, TXT, CSV, and TSV files
           </div>
           <input
             ref={fileInputRef}
             type="file"
-            accept=".pdf,.docx,.txt,.csv,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/csv"
+            accept=".pdf,.docx,.txt,.csv,.tsv,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/csv,text/tab-separated-values,text/tsv"
             style={{ display: "none" }}
             onChange={(e) => {
               const file = e.target.files?.[0];

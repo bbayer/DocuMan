@@ -1,17 +1,16 @@
 /**
- * CSV Parser for DocuMan
+ * CSV / TSV Parser for DocuMan
  *
  * Supports two modes:
- * 1. **Structured import**: When CSV headers match known requirement fields
+ * 1. **Structured import**: When CSV/TSV headers match known requirement fields
  *    (itemNumber, category, title, content, indentLevel), rows are mapped
  *    directly to requirements — bypassing AI extraction entirely.
- * 2. **Text fallback**: If headers don't match, the CSV is converted to a
+ * 2. **Text fallback**: If headers don't match, the CSV/TSV is converted to a
  *    plain text representation and passed through the normal AI extraction
  *    pipeline.
  *
- * The parser is intentionally dependency-free (no `csv-parse` / `papaparse`)
- * to keep the bundle lean. It handles quoted fields, escaped quotes, and
- * mixed line endings (CRLF / LF).
+ * Automatically detects whether the file is comma-separated (,), tab-separated (\t),
+ * or semicolon-separated (;).
  */
 
 import type { ParsedDocument } from "./index";
@@ -34,9 +33,57 @@ function resolveColumnName(header: string): string | null {
   return null;
 }
 
-// ─── Lightweight RFC 4180 CSV parser ─────────────────────
+// ─── Automatic Delimiter Detection ───────────────────────
 
-function parseCSVLine(line: string): string[] {
+/**
+ * Detects whether text uses comma (,), tab (\t), or semicolon (;) delimiters.
+ */
+export function detectDelimiter(text: string): string {
+  const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+  const sampleLines = lines.filter((l) => l.trim().length > 0).slice(0, 15);
+  if (sampleLines.length === 0) return ",";
+
+  const candidateDelimiters = [",", "\t", ";"];
+  let bestDelimiter = ",";
+  let maxScore = -1;
+
+  for (const delim of candidateDelimiters) {
+    const colCounts = sampleLines.map((line) => {
+      let count = 0;
+      let inQuotes = false;
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (ch === '"') {
+          inQuotes = !inQuotes;
+        } else if (!inQuotes && ch === delim) {
+          count++;
+        }
+      }
+      return count + 1;
+    });
+
+    const firstCount = colCounts[0];
+    if (firstCount <= 1) continue; // Single column implies delimiter is not present
+
+    // Count how many sample lines have the exact same number of columns
+    const matchingLines = colCounts.filter((c) => c === firstCount).length;
+    const consistencyRatio = matchingLines / colCounts.length;
+
+    // Score based on column count and consistency across lines
+    const score = firstCount * 10 + consistencyRatio * 100;
+
+    if (score > maxScore) {
+      maxScore = score;
+      bestDelimiter = delim;
+    }
+  }
+
+  return bestDelimiter;
+}
+
+// ─── Lightweight RFC 4180 CSV / TSV parser ─────────────────
+
+function parseCSVLine(line: string, delimiter: string = ","): string[] {
   const fields: string[] = [];
   let current = "";
   let inQuotes = false;
@@ -65,7 +112,7 @@ function parseCSVLine(line: string): string[] {
         i++;
         continue;
       }
-      if (ch === ",") {
+      if (ch === delimiter) {
         fields.push(current);
         current = "";
         i++;
@@ -79,7 +126,8 @@ function parseCSVLine(line: string): string[] {
   return fields;
 }
 
-function parseCSV(text: string): string[][] {
+function parseCSV(text: string, customDelimiter?: string): { rows: string[][]; delimiter: string } {
+  const delimiter = customDelimiter || detectDelimiter(text);
   // Normalise line endings and split
   const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
   const rows: string[][] = [];
@@ -94,16 +142,16 @@ function parseCSV(text: string): string[][] {
       continue;
     }
     if (pendingLine.trim().length > 0) {
-      rows.push(parseCSVLine(pendingLine));
+      rows.push(parseCSVLine(pendingLine, delimiter));
     }
     pendingLine = "";
   }
   // Push any remaining partial line
   if (pendingLine.trim().length > 0) {
-    rows.push(parseCSVLine(pendingLine));
+    rows.push(parseCSVLine(pendingLine, delimiter));
   }
 
-  return rows;
+  return { rows, delimiter };
 }
 
 // ─── Structured Requirement from CSV row ─────────────────
@@ -122,6 +170,8 @@ export interface CSVParseResult {
   /** True when the CSV columns matched known requirement fields and rows
    *  were mapped directly (structured import). */
   isStructured: boolean;
+  /** Detected delimiter (",", "\t", or ";"). */
+  detectedDelimiter: string;
   /** Populated only in structured mode. */
   requirements: CSVRequirement[];
   /** The parsed document (always populated). In structured mode `text`
@@ -131,14 +181,15 @@ export interface CSVParseResult {
 
 const VALID_CATEGORIES = new Set(["TITLE", "REQUIREMENT", "PARAGRAPH", "NOTE"]);
 
-export async function parseCsv(buffer: Buffer): Promise<CSVParseResult> {
+export async function parseCsv(buffer: Buffer, customDelimiter?: string): Promise<CSVParseResult> {
   const text = buffer.toString("utf-8");
-  const rows = parseCSV(text);
+  const { rows, delimiter } = parseCSV(text, customDelimiter);
 
   if (rows.length < 2) {
     // Only header row (or empty) — nothing to map
     return {
       isStructured: false,
+      detectedDelimiter: delimiter,
       requirements: [],
       document: { text, metadata: { title: "CSV Import" } },
     };
@@ -187,6 +238,7 @@ export async function parseCsv(buffer: Buffer): Promise<CSVParseResult> {
 
     return {
       isStructured: true,
+      detectedDelimiter: delimiter,
       requirements,
       document: { text, metadata: { title: docTitle } },
     };
@@ -203,6 +255,7 @@ export async function parseCsv(buffer: Buffer): Promise<CSVParseResult> {
 
   return {
     isStructured: false,
+    detectedDelimiter: delimiter,
     requirements: [],
     document: { text: plainText, metadata: { title } },
   };
