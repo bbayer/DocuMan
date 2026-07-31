@@ -451,13 +451,31 @@ export function ProjectDetail({ project }: { project: Project }) {
 
       {/* Create Derivative Modal */}
       {showDeriveModal && (
-        <div className="modal-overlay" onClick={() => setShowDeriveModal(false)}>
+        <div
+          className="modal-overlay"
+          onClick={() => {
+            if (!loading) setShowDeriveModal(false);
+          }}
+        >
           <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2 className="modal-title">Create Derivative Document</h2>
-              <p className="modal-description">
-                Generate a new document from an original, with requirement-level traceability.
-              </p>
+            <div className="modal-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+              <div>
+                <h2 className="modal-title">Create Derivative Document</h2>
+                <p className="modal-description">
+                  Generate a new document from an original, with requirement-level traceability.
+                </p>
+              </div>
+              {!loading && (
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => setShowDeriveModal(false)}
+                  title="Close"
+                  style={{ fontSize: "1.1rem", lineHeight: 1, padding: "4px 8px" }}
+                >
+                  ✕
+                </button>
+              )}
             </div>
             <div className="modal-body">
               <div className="input-group">
@@ -468,6 +486,7 @@ export function ProjectDetail({ project }: { project: Project }) {
                   className="select"
                   id="derive-source"
                   value={deriveFrom}
+                  disabled={loading}
                   onChange={(e) => setDeriveFrom(e.target.value)}
                 >
                   {originalDocs.map((doc) => (
@@ -485,6 +504,7 @@ export function ProjectDetail({ project }: { project: Project }) {
                   className="select"
                   id="derive-category"
                   value={deriveCategory}
+                  disabled={loading}
                   onChange={(e) => {
                     setDeriveCategory(e.target.value);
                     const source = originalDocs.find((d) => d.id === deriveFrom);
@@ -514,6 +534,7 @@ export function ProjectDetail({ project }: { project: Project }) {
                   id="derive-title"
                   type="text"
                   value={deriveTitle}
+                  disabled={loading}
                   onChange={(e) => setDeriveTitle(e.target.value)}
                   placeholder="e.g. Flight Control System SRS"
                 />
@@ -530,6 +551,7 @@ export function ProjectDetail({ project }: { project: Project }) {
                   className="input"
                   id="derive-extra-instructions"
                   value={extraInstructions}
+                  disabled={loading}
                   onChange={(e) => setExtraInstructions(e.target.value)}
                   placeholder="e.g. Use passive voice. Each requirement must reference a specific subsystem. Focus on safety-critical aspects..."
                   rows={4}
@@ -539,7 +561,7 @@ export function ProjectDetail({ project }: { project: Project }) {
                   <label
                     htmlFor="derive-instructions-file"
                     className="btn btn-ghost btn-sm"
-                    style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "var(--space-2)" }}
+                    style={{ cursor: loading ? "not-allowed" : "pointer", display: "inline-flex", alignItems: "center", gap: "var(--space-2)" }}
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -552,6 +574,7 @@ export function ProjectDetail({ project }: { project: Project }) {
                     type="file"
                     id="derive-instructions-file"
                     accept=".txt"
+                    disabled={loading}
                     style={{ display: "none" }}
                     onChange={(e) => {
                       const file = e.target.files?.[0];
@@ -578,6 +601,7 @@ export function ProjectDetail({ project }: { project: Project }) {
                   className="input"
                   id="derive-reasoning"
                   value={reasoningEffort}
+                  disabled={loading}
                   onChange={(e) => setReasoningEffort(e.target.value as "none" | "low" | "medium" | "high")}
                 >
                   <option value="none">None — Skip reasoning</option>
@@ -586,11 +610,35 @@ export function ProjectDetail({ project }: { project: Project }) {
                   <option value="high">High — Deep analysis</option>
                 </select>
               </div>
+
+              {loading && (
+                <div style={{
+                  padding: "var(--space-4)",
+                  background: "var(--color-bg-secondary, #f8fafc)",
+                  border: "1px solid var(--color-border, #cbd5e1)",
+                  borderRadius: "8px",
+                  marginTop: "var(--space-4)",
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "8px" }}>
+                    <span className="spinner" style={{ width: "20px", height: "20px" }} />
+                    <span style={{ fontWeight: 600, color: "var(--color-primary, #2563eb)", fontSize: "0.95rem" }}>
+                      Generating Document ({progress}%)
+                    </span>
+                  </div>
+                  <p style={{ margin: 0, fontSize: "0.875rem", color: "var(--color-text-secondary, #475569)" }}>
+                    {statusText || "Processing requirements and building section outline..."}
+                  </p>
+                  <p style={{ margin: "8px 0 0 0", fontSize: "0.75rem", color: "#64748b", fontStyle: "italic" }}>
+                    🔒 Document generation is in progress. Clicking outside will not interrupt generation.
+                  </p>
+                </div>
+              )}
             </div>
             <div className="modal-footer">
               <button
                 className="btn btn-secondary"
                 onClick={() => setShowDeriveModal(false)}
+                disabled={loading}
               >
                 Cancel
               </button>
