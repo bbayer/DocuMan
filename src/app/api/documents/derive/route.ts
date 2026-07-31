@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
-import { breakDownRequirements, DerivationContext, DerivedItemOutput } from "@/lib/ai/derivative-generator";
+import { breakDownRequirements, DerivationContext, DerivedItemOutput, synthesizeSectionParagraphs } from "@/lib/ai/derivative-generator";
 import { analyzeSourceDocument } from "@/lib/ai/document-analyzer";
 import { validateRequirements, mergeWithDefaults, type RequirementInput } from "@/lib/ai/quality-validator";
 import { getSectionsForCategory } from "@/lib/standards/j-std-016";
@@ -190,8 +190,13 @@ export async function POST(req: NextRequest) {
         const derivedItems = await breakDownRequirements(chunk, docCategory, derivationContext);
 
         for (const item of derivedItems) {
-          // Resolve target section number
+          // Resolve target section number — remap parent container sections (1, 3, 4, 5) to leaf sub-sections
           let secNum = item.targetSectionNumber || "3.1";
+          if (secNum === "1") secNum = "1.1";
+          else if (secNum === "3") secNum = "3.1";
+          else if (secNum === "4") secNum = "4.1";
+          else if (secNum === "5") secNum = "5.1";
+
           if (!targetSectionNumbers.has(secNum)) {
             let matched = false;
             for (const tSec of targetSections) {
@@ -201,7 +206,7 @@ export async function POST(req: NextRequest) {
                 break;
               }
             }
-            if (!matched) secNum = targetSections[0]?.sectionNumber || "3.1";
+            if (!matched) secNum = targetSections[1]?.sectionNumber || "1.1";
           }
 
           const bucket = sectionBucket.get(secNum) || [];
@@ -209,6 +214,38 @@ export async function POST(req: NextRequest) {
           sectionBucket.set(secNum, bucket);
 
           previouslyGenerated.push(`${secNum}: ${item.title || item.content.slice(0, 80)}`);
+        }
+      }
+
+      // 2.5 Auto-fill empty LEAF outline sections with synthesized design paragraphs
+      for (const sec of targetSections) {
+        // Skip parent container headers like "1", "3", "4", "5" from having direct paragraph children
+        const isParentHeader = targetSections.some((other) => other.sectionNumber !== sec.sectionNumber && other.sectionNumber.startsWith(sec.sectionNumber + "."));
+        if (isParentHeader) continue;
+
+        const bucket = sectionBucket.get(sec.sectionNumber) || [];
+        if (bucket.length === 0) {
+          await send({
+            progress: 85,
+            status: `✍️ Synthesizing section ${sec.sectionNumber} (${sec.sectionTitle})...`,
+          });
+          const derivationContext: DerivationContext = {
+            projectAiContext: project?.aiContext || undefined,
+            documentTitle: parentDocument?.title || undefined,
+            extraInstructions: extraInstructions || undefined,
+            reasoningEffort: reasoningEffort || undefined,
+            language: analysis.language,
+            glossary: dedupedGlossary,
+            targetOutline: targetSections,
+            themes: analysis.themes.length > 0 ? analysis.themes : undefined,
+          };
+          const synthesized = await synthesizeSectionParagraphs(
+            sec.sectionNumber,
+            sec.sectionTitle,
+            docCategory,
+            derivationContext
+          );
+          sectionBucket.set(sec.sectionNumber, synthesized);
         }
       }
 

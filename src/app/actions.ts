@@ -335,7 +335,13 @@ export async function repairDocumentStructure(documentId: string, projectId: str
 
   for (const item of doc.requirements) {
     if (item.category === "TITLE") {
-      activeSectionNumber = item.itemNumber || activeSectionNumber;
+      let secNum = item.itemNumber || "1.1";
+      if (secNum === "1") secNum = "1.1";
+      else if (secNum === "3") secNum = "3.1";
+      else if (secNum === "4") secNum = "4.1";
+      else if (secNum === "5") secNum = "5.1";
+
+      activeSectionNumber = secNum;
       childIdx = 1;
 
       await prisma.requirement.update({
@@ -346,6 +352,10 @@ export async function repairDocumentStructure(documentId: string, projectId: str
       const newItemNumber = `${activeSectionNumber}.${childIdx++}`;
       let cleanTitle = (item.title || "").trim();
       cleanTitle = cleanTitle.replace(/^(\d+\.)+\d*\s*/, "");
+      // Replace generic default titles with clean Turkish titles if missing
+      if (!cleanTitle || cleanTitle === "Derived Design Description" || cleanTitle === "Scope") {
+        cleanTitle = `Tasarım Detayı ${childIdx - 1}`;
+      }
 
       await prisma.requirement.update({
         where: { id: item.id },
