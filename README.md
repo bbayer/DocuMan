@@ -1,48 +1,59 @@
 # DocuMan 🚀
 
-**DocuMan** is a next-generation, AI-powered requirements engineering workspace designed to automate the extraction, management, versioning, and traceability of technical documentation. Whether parsing complex requirements documents, generating MIL-STD-498 compliant derivatives, or resolving suspect traceability links, DocuMan provides a structured, interactive, and AI-assisted environment for modern systems engineering.
+**DocuMan** is a next-generation, AI-powered systems engineering workspace designed to automate the extraction, management, derivation, versioning, and traceability of technical documentation. Built for systems architects and requirements engineers, DocuMan translates high-level specifications into MIL-STD-498 / PPI PPA-003461-5 compliant derivatives, visualizes architectural Mermaid diagrams live in the browser, and manages suspect traceability links.
 
 ---
 
 ## 🌟 Key Features
 
 ### 1. Automated AI Document Parsing & Extraction
-* **Multi-Format Support**: Upload files in **PDF**, **DOCX**, or **TXT** formats.
-* **Intelligent Chunked Extraction**: Processes entire documents of any length without static truncation.
-* **Structured Categorization**: Automatically groups document elements into `TITLE` (headings), `REQUIREMENT` (specifications/shall-statements), `PARAGRAPH` (descriptive text), and `NOTE` (remarks).
-* **Automatic Item Numbering**: Automatically detects or structures hierarchically nested item numbers (e.g., `3.2.1`).
+* **Multi-Format Support**: Upload source files in **PDF**, **DOCX**, or **TXT** formats.
+* **Intelligent Chunked Extraction**: Parses documents of any length without static token truncation.
+* **Structured Categorization**: Groups elements into `TITLE` (headings), `REQUIREMENT` (specifications/shall-statements), `PARAGRAPH` (descriptive text), and `NOTE` (remarks).
+* **Automatic Item Numbering**: Detects and structures hierarchically nested item numbers (e.g., `3.2.1`).
 
-### 2. Multi-Pane Interactive Requirement Editor
-* **Inline Editing**: Modify requirements directly within the structured document view.
-* **Real-time Filtering**: Locate requirements instantly using live text search.
-* **Granular Versioning**: Tracks changes at both the document level and the individual requirement level. Revert or audit edits with ease.
-* **Workflow Management**: Transition documents through states (`DRAFT` ➔ `REVIEW` ➔ `PUBLISHED`). Published documents freeze revisions as read-only snapshots under a new major version number.
+### 2. 3-Pass High-Precision AI Derivation Engine
+* **Pass 1 — Global Document & Functional Analysis**: Analyzes the entire source document to extract executive summaries, canonical terminology glossaries, cross-cutting themes, and a **System Functions Registry** grouping related parent requirements (`SSS-001`, `SSS-002`, `SSS-005`) into granular System Functions (`Fn-001`, `Fn-002`...).
+* **Pass 2 — Architectural Pre-Pass Synthesis**: Synthesizes Section 1 (`1.1 Identification`, `1.2 System overview`, `1.3 Document overview`), Section 2 (`Referenced documents`), and Section 3 (`3.1 Architectural`, `3.2 Operational`, `3.3 Safety & Security decisions`) FIRST, establishing the global architectural blueprint before chunk processing.
+* **Pass 3 — Chunk Breakdown & Section 5.2 Functional Tables**: Generates Section 5.2 Functional Architecture tables with exact 4-row formats (Function Name, Description, bulleted Inputs & Outputs with data subfields/structures, and parent Requirement Reference IDs).
 
-### 3. Context-Aware AI Chat Assistant
-* **Contextual Referencing**: Hover and click on any requirement to load it directly into the AI editing panel.
-* **AI-Assisted Redrafting**: Ask the AI to rewrite, expand, simplify, or verify compliance for a specific requirement.
-* **AI-Driven Additions**: Add new requirements generated with the assistant, automatically placed in the correct hierarchy.
+### 3. Live Visual Mermaid Diagram Rendering
+* **Interactive Browser Rendering**: Client-side responsive SVG Mermaid rendering (`<MermaidViewer />`) with a **Show / Hide Mermaid Code** toggle in the Document Editor UI.
+* **Architectural & Data Flow Diagrams**: Generates visual system component breakdown diagrams (Section 4.1) and data flow diagrams (Section 4.3).
+* **PDF & HTML Export Integration**: Embedded Mermaid JS library for 1-click **Export HTML / Print to PDF**.
 
-### 4. Traceability & Suspect Link Management
-* **Requirement-Level Linking**: Link derived requirements to original source documents (e.g., mapping System Requirements to Stakeholder Needs).
-* **Trace Types**: Supports multiple link relationships (`DERIVED_FROM`, `SATISFIES`, `RELATED_TO`).
-* **Suspect Link Flags**: Automatically flags downstream links as "suspect" when parent requirements are modified, prompting immediate verification of trace integrity.
+### 4. Mandatory Interface & Signal Specification Tables
+* **Section 4.3 System Interface Summary Tables**: Renders subsystem interface summary tables (`Interface ID`, `Source Subsystem / HWCI`, `Target Subsystem / CSCI`, `Protocol / Transport`, `Data Exchanged`).
+* **Section 5.3 Signal & Data Dictionary Tables**: Renders detailed signal specifications (`Signal ID`, `Name`, `Data Type & Range`, `Subfields / Payload Structure`, `Rate / Latency`, `Upstream SSS Reqs`).
 
-### 5. Custom Document Exporting
-* **HTML & CSS Templates**: Define structured templates using Handlebars.
-* **Puppeteer PDF Rendering**: Generate professional PDF exports with custom styling, headers, and footers.
-* **Traceable Dataset Exports**: Export datasets containing derived item numbers and trace metrics.
+### 5. Leaf Section Mapping & Scoped Item Numbering
+* **Strict Leaf Section Mapping**: Maps derived items ONLY to leaf sub-sections (`1.1`, `1.2`, `1.3`, `2`, `3.1`, `3.2`, `3.3`, `4.1`, `4.2`, `4.3`, `5.1`, `5.2`, `5.3`, `5.4`, `6`, `7`).
+* **Clean Scoped Numbering**: Assigns clean sub-section item numbers (`1.1.1`, `1.1.2`, `1.2.1`, `1.2.2`, `3.1.1`, `5.2.1`).
+* **Human-Readable Tracing**: Replaces raw internal database UUIDs with human-readable Requirement Reference Numbers (`SSS-001`, `SSS-004`).
+
+### 6. Multi-Pane Interactive Requirement Editor & Tree Repair
+* **Inline Editing & Live Search**: Modify requirements directly within the structured document view with real-time text search.
+* **Granular Versioning & Approval**: Tracks edits at both document and requirement levels (`DRAFT` ➔ `REVIEW` ➔ `PUBLISHED`).
+* **Sequential Tree Repair**: Built-in `repairDocumentStructure` server action for physical depth-first re-numbering of document requirement trees.
+
+### 7. Traceability & Suspect Link Management
+* **Requirement-Level Linking**: Link derived requirements to original source documents (`DERIVED_FROM`, `SATISFIES`, `RELATED_TO`).
+* **Suspect Link Flags**: Automatically flags downstream links as "suspect" when parent requirements are modified.
+
+### 8. Modal Window Protection
+* **Backdrop Click Lock**: Prevents accidental modal closing during AI document derivation (`loading` state lock).
+* **Real-time Progress Banner**: Displays live percentage (`%`) and active synthesis step inside the modal.
 
 ---
 
 ## 🛠️ Tech Stack
 
 * **Framework**: [Next.js 15](https://nextjs.org/) (App Router, Server Actions)
-* **Frontend**: React 19, TypeScript, Tailwind CSS / Vanilla CSS
+* **Frontend**: React 19, TypeScript, Vanilla CSS, [Mermaid JS](https://mermaid.js.org/)
 * **Database & ORM**: [Prisma ORM](https://www.prisma.io/) with SQLite (development) or PostgreSQL (production)
 * **AI Integration**: [Vercel AI SDK](https://sdk.vercel.ai/docs) & `@ai-sdk/openai-compatible`
 * **Parsing Utilities**: `pdf-parse`, `officeparser` (DOCX), standard text streams
-* **Export Engine**: `puppeteer`, `handlebars`
+* **Export Engine**: HTML Exporter with Mermaid JS & `@media print` PDF engine
 
 ---
 
@@ -55,44 +66,24 @@ DocuMan/
 │   └── schema.prisma        # Database Models & Schema Definition
 ├── src/
 │   ├── app/
-│   │   ├── actions.ts       # Server Actions (CRUD for projects, docs, requirements)
-│   │   ├── api/             # API Endpoints (AI Chat, Upload, Derive, Export)
-│   │   ├── dashboard/       # Dashboard, projects list, editor, and traceability pages
-│   │   ├── globals.css      # Core Design System, custom UI stylesheets
+│   │   ├── actions.ts       # Server Actions (CRUD, repairDocumentStructure)
+│   │   ├── api/             # API Endpoints (Upload, Derive, Export)
+│   │   ├── dashboard/       # Dashboard, projects, document editor, and traceability
+│   │   ├── globals.css      # Core Design System
 │   │   ├── layout.tsx       # Root layout
 │   │   └── page.tsx         # Dashboard landing page
+│   ├── components/
+│   │   └── mermaid-viewer.tsx # Client-side visual SVG Mermaid diagram component
 │   └── lib/
-│       ├── ai/              # AI extractors, chat handlers, and derivative generators
+│       ├── ai/              # Derivative generator, document analyzer, quality validator
+│       ├── export/          # HTML & PDF exporter engine with Mermaid JS
 │       ├── parsers/         # PDF, DOCX, TXT parser modules
+│       ├── standards/       # J-STD-016 & MIL-STD-498 outline templates
 │       └── db.ts            # Prisma Database client initializer
 ├── uploads/                 # Local directory for storing original files
 ├── Dockerfile               # Production container config
 └── package.json             # NPM dependencies & build scripts
 ```
-
----
-
-## ⚙️ Database Architecture
-
-DocuMan uses a relational data model managed via Prisma:
-
-```mermaid
-erDiagram
-    User ||--o{ Project : owns
-    User ||--o{ DocumentVersion : snapshots
-    User ||--o{ RequirementVersion : edits
-    Project ||--o{ Document : contains
-    Document ||--o| OriginalFile : uploads
-    Document ||--o{ DocumentVersion : tracks
-    Document ||--o{ Requirement : structures
-    Document }o--o{ Document : derives
-    Requirement ||--o{ RequirementVersion : versions
-    Requirement ||--o{ TraceabilityLink : traces
-```
-
-* **User**: Handles basic authentication and ownership profiles.
-* **Project**: Grouping boundary for documents and configurations.
-* **Document**: Manages metadata, category (`SSS`, `SSDD`, `SRS`, `SDD`, `IRS`, `IDD`, `STP`, `CUSTOM`), lifecycle status (`DRAFT`, `REVIEW`, `PUBLISHED`), and major/minor version snapshots.
 
 ---
 
@@ -103,15 +94,12 @@ DocuMan provides first-class support for MIL-STD-498 and modern superseding stan
 | Category | Standard Document Type | MIL-STD-498 DID | IEEE / ISO Superseding Standard | Purpose & Focus |
 | :--- | :--- | :--- | :--- | :--- |
 | **SSS** | System/Subsystem Specification | DI-IPSC-81431 | ISO/IEC/IEEE 29148 | High-level system & subsystem requirements |
-| **SSDD** | System/Subsystem Design Description | DI-IPSC-81432 | IEEE 1016 / ISO 42010 | System architecture, HW/SW component breakdown (HWCIs/CSCIs), operational concept, and system interface matrices |
+| **SSDD** | System/Subsystem Design Description | DI-IPSC-81432 | IEEE 1016 / ISO 42010 | System architecture, HW/SW component breakdown (HWCIs/CSCIs), operational concept, and 4-row functional tables |
 | **SRS** | Software Requirements Specification | DI-IPSC-81433 | IEEE 830 / ISO 29148 | Detailed software requirements for Computer Software Configuration Items (CSCIs) |
 | **SDD** | Software Design Description | DI-IPSC-81435 | IEEE 1016-2009 | CSCI software unit internal design, functions, data structures, and algorithms |
 | **IRS** | Interface Requirements Specification | DI-IPSC-81434 | ISO/IEC/IEEE 29148 | External system interface requirements |
 | **IDD** | Interface Design Description | DI-IPSC-81436 | IEEE 1016 | Detailed physical & logical interface message schemas and pinouts |
 | **STP** | Software Test Plan | DI-IPSC-81438 | IEEE 829 / ISO 29119 | Verification procedures, test environments, and qualification provisions |
-* **Requirement**: The core building block; holds text, classification (`TITLE`, `REQUIREMENT`, `PARAGRAPH`, `NOTE`), and hierarchical layout indices (`indentLevel`, `sortOrder`).
-* **RequirementVersion**: Historical audit log of individual requirement changes.
-* **TraceabilityLink**: Joins source and target requirements. Flags `isSuspect` if the target or source requirement updates.
 
 ---
 
@@ -143,16 +131,13 @@ Review and update the variables:
 * `UPLOAD_DIR`: Path to the directory where uploads are stored (defaults to `./uploads`).
 
 ### 3. Initialize the Database
-Run database migrations and seed default document export templates:
+Run database migrations:
 ```bash
 # Generate the Prisma client code
 npm run db:generate
 
-# Push schema directly to the SQLite database
+# Push schema directly to the database
 npm run db:push
-
-# (Optional) Seed built-in export templates
-npm run db:seed
 ```
 
 ### 4. Start Development Server
@@ -163,15 +148,12 @@ Open **[http://localhost:3000](http://localhost:3000)** in your browser to view 
 
 ---
 
-## 🛠️ API & Core Workflows
+## 🛠️ Build & Verification Commands
 
-### AI Extraction Workflow
-1. Upload a document in **Dashboard ➔ Upload**.
-2. `src/lib/parsers/` reads the raw binary data.
-3. `extractRequirements(text)` split the raw text into paragraph-aware chunks.
-4. Each chunk is sent sequentially to the configured LLM with instructions to map unstructured text directly to Zod schemas matching `RequirementSchema`.
-5. Extracted requirements are automatically nested and ordered inside the project database.
+```bash
+# Type check TypeScript files
+npx tsc --noEmit
 
-### Traceability Updates
-* When you edit a requirement using the inline editor or AI assistant, `updateRequirement` in `src/app/actions.ts` runs.
-* It saves a new snapshot to `RequirementVersion` and automatically toggles `isSuspect = true` in `TraceabilityLink` for any connected traces, signaling verification requirements.
+# Build production bundle
+npm run build
+```
