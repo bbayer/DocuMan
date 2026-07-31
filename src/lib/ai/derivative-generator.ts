@@ -1,6 +1,7 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { generateObject } from "ai";
 import { z } from "zod";
+import type { SystemFunctionSummary } from "@/lib/ai/document-analyzer";
 
 function getProvider() {
   return createOpenAICompatible({
@@ -36,6 +37,8 @@ export interface DerivationContext {
   projectAiContext?: string;
   /** Title of the parent document being derived from */
   documentTitle?: string;
+  /** Executive architectural summary of source document (from Pass 1) */
+  documentSummary?: string;
   /** Section headings (TITLE items) that are ancestors of the current chunk */
   sectionHeadings?: string[];
   /** User-provided extra instructions for the AI */
@@ -50,6 +53,8 @@ export interface DerivationContext {
   targetOutline?: { sectionNumber: string; sectionTitle: string }[];
   /** Cross-cutting themes that apply to all requirements */
   themes?: string[];
+  /** Synthesized granular system functions joining upstream requirements (for SSDD Section 5.2) */
+  systemFunctions?: SystemFunctionSummary[];
   /** Running summary of previously generated requirement titles (for dedup) */
   previouslyGenerated?: string[];
 }
@@ -93,9 +98,14 @@ export async function breakDownRequirements(
     systemContext += `\n\nSYSTEM CONTEXT (provided by project owner — treat as ground truth):\n${context.projectAiContext}`;
   }
 
+  // Source Document Summary (Pass 1 Output)
+  if (context.documentSummary) {
+    systemContext += `\n\nSOURCE DOCUMENT ARCHITECTURAL SUMMARY:\n${context.documentSummary}`;
+  }
+
   // Document context
   if (context.documentTitle) {
-    systemContext += `\n\nSOURCE DOCUMENT: "${context.documentTitle}"`;
+    systemContext += `\n\nSOURCE DOCUMENT TITLE: "${context.documentTitle}"`;
   }
 
   // Glossary enforcement
@@ -104,6 +114,14 @@ export async function breakDownRequirements(
       (g) => `- "${g.term}": ${g.definition}`
     ).join("\n");
     systemContext += `\n\nTERMINOLOGY GLOSSARY:\n${glossaryLines}`;
+  }
+
+  // Synthesized System Functions (Pass 1 Output for Section 5.2 grouping)
+  if (context.systemFunctions && context.systemFunctions.length > 0) {
+    const funcLines = context.systemFunctions.map((fn) =>
+      `- [${fn.functionId}] ${fn.functionTitle} (Upstream SSS Reqs: ${fn.upstreamRequirementIds.join(", ")})\n  Description: ${fn.description}`
+    ).join("\n");
+    systemContext += `\n\nSYNTHESIZED SYSTEM FUNCTIONS REGISTRY (Use these granular functions for Section 5.2 Functional Architecture tables):\n${funcLines}`;
   }
 
   // Target document outline awareness
@@ -134,31 +152,21 @@ export async function breakDownRequirements(
       "1. ITEM CATEGORIES: Do NOT use 'REQUIREMENT' category for SSDD items. Use ONLY 'PARAGRAPH' (narrative text, tables, diagrams) or 'TITLE' for subheadings. SSDD is a design description, not a requirement specification.\n" +
       "2. LEAF SECTION MAPPING ONLY: Map items ONLY to leaf section numbers ('1.1', '1.2', '1.3', '2', '3.1', '3.2', '3.3', '4.1', '4.2', '4.3', '5.1', '5.2', '5.3', '5.4', '6'). NEVER map items directly to container headers '1', '3', '4', '5'.\n" +
       "3. MEANINGFUL PARAGRAPH TITLES: Every paragraph item MUST have a concise, meaningful engineering title reflecting its specific content. NEVER output generic titles like 'Derived Design Description' or 'Scope'.\n" +
-      "4. MERMAID ARCHITECTURAL DIAGRAMS: Generate Mermaid diagrams (using ```mermaid ... ``` blocks) in Section 4.1 (System Component Breakdown) and Section 4.3 (Data Flow Architecture) to visually illustrate system components, Subsystems, HWCIs (Hardware Configuration Items), CSCIs (Computer Software Configuration Items), and Manual Operations.\n" +
-      "5. SECTION 5.2 FUNCTIONAL ARCHITECTURE MANDATORY 4-ROW TABLE FORMAT:\n" +
+      "4. GRANULAR FUNCTION GROUPING: Group ONLY closely related parent requirements (at most 1–3 requirements per function). Do NOT create overly generalized macro functions. Keep distinct functions for distinct capabilities.\n" +
+      "5. MERMAID DIAGRAMS & INTERFACE TABLES (MANDATORY IN SECTIONS 4.3 & 5.3):\n" +
+      "   - Section 4.1: HWCI/CSCI component breakdown + Mermaid breakdown diagram.\n" +
+      "   - Section 4.3: Data flow architecture + Mermaid data flow diagram + System Interface Summary Table:\n" +
+      "     | Interface ID | Source Subsystem / HWCI | Target Subsystem / CSCI | Protocol / Transport | Data Exchanged & Purpose |\n" +
+      "   - Section 5.3: Interface Data Dictionary & Signal Specification Tables:\n" +
+      "     | Signal / Data ID | Signal Name | Data Type & Range | Subfields / Payload Structure | Rate / Latency | Upstream SSS Reqs |\n" +
+      "6. SECTION 5.2 FUNCTIONAL ARCHITECTURE MANDATORY 4-ROW TABLE FORMAT:\n" +
       "   For each system function in Section 5.2 (System functional architecture & functional detailed design), generate a PARAGRAPH item containing an EXACT 4-row Markdown table:\n" +
       "   | Field | Details |\n" +
       "   | :--- | :--- |\n" +
       "   | **Function Name** | **Fn-00X: [Function Title]** |\n" +
       "   | **Function Description** | [Detailed description of function purpose, behavior, algorithm, and operation] |\n" +
       "   | **Inputs / Outputs** | **Inputs:**<br/>- **[Input Parameter/Signal 1]**: [Purpose] (subfields/structure: field_a, field_b, field_c)<br/>- **[Input Parameter/Signal 2]**: [Purpose] (subfields/structure: field_x, field_y)<br/><br/>**Outputs:**<br/>- **[Output Data/Signal 1]**: [Description] (subfields/structure: out_field1, out_field2)<br/>- **[Output Data/Signal 2]**: [Description] (subfields/structure: status_code, timestamp) |\n" +
-      "   | **Upstream SSS Requirements** | [List of Requirement Reference Number(s) e.g. SSS-001, SSS-004 — NEVER use raw database UUIDs] |\n\n" +
-      "6. SECTION TITLE ALIGNMENT:\n" +
-      "   - Target Section 1.1 (Identification): PARAGRAPH items for formal system identification, scope, software baseline, and document version.\n" +
-      "   - Target Section 1.2 (System overview): PARAGRAPH items for high-level system purpose, operational domain, primary subsystems, and operational context.\n" +
-      "   - Target Section 1.3 (Document overview): PARAGRAPH items describing SSDD document structure, section layout, and audience.\n" +
-      "   - Target Section 2 (Referenced documents): PARAGRAPH items listing applicable standards (MIL-STD-498, PPI PPA-003461-5, IEEE), ICD specifications, and project baselines.\n" +
-      "   - Target Section 3.1 (System architectural design decisions): PARAGRAPH items for architectural design trade-offs, communications backbone patterns, state synchronization, component decoupling, determinism, and visualization/rendering strategies based on project context.\n" +
-      "   - Target Section 3.2 (System operational concept decisions): PARAGRAPH items for operational modes, execution lifecycle, system state transitions, operator/instructor controls, and error recovery concepts based on project context.\n" +
-      "   - Target Section 3.3 (System safety, security, and privacy decisions): PARAGRAPH items for system safety interlocks, authentication, access control policies, data privacy isolation, and fail-safe mechanisms based on project security baselines.\n" +
-      "   - Target Section 4.1 (System component breakdown & component allocation): PARAGRAPH items for HWCI/CSCI component allocations + a Mermaid system breakdown diagram.\n" +
-      "   - Target Section 4.2 (Concept of execution & operational scenarios): PARAGRAPH items describing execution scenarios and state transitions.\n" +
-      "   - Target Section 4.3 (System interface design & data flow architecture): PARAGRAPH items with a Mermaid data flow diagram and Markdown interface tables.\n" +
-      "   - Target Section 5.1 (System detailed design overview): PARAGRAPH items describing detailed component responsibilities.\n" +
-      "   - Target Section 5.2 (System functional architecture & functional detailed design): PARAGRAPH items containing the mandatory 4-row Functional Architecture table per function.\n" +
-      "   - Target Section 5.3 (System interface detailed specifications): PARAGRAPH items with Markdown tables for detailed message schemas and signals.\n" +
-      "   - Target Section 5.4 (System resource allocation & performance budgets): PARAGRAPH items with Markdown tables for memory, CPU, bandwidth, and processing budgets.\n" +
-      "   - Target Section 6 (Requirements traceability): PARAGRAPH items summarizing traceability back to parent SSS requirements.\n";
+      "   | **Upstream SSS Requirements** | [List of grouped Requirement Reference Number(s) e.g. SSS-001, SSS-002 — NEVER use raw database UUIDs] |\n\n";
   } else if (docCategory === "SDD") {
     systemContext += "\n\nTranslate upstream SRS requirements into a MIL-STD-498 DI-IPSC-81435 / IEEE 1016 Software Design Description (SDD).\n" +
       "For each software requirement, specify concrete software units, execution control, algorithms, and data structures:\n" +
@@ -232,13 +240,14 @@ export async function synthesizeSectionParagraphs(
   let prompt = `You are a Chief Systems Engineer writing a MIL-STD-498 / PPI PPA-003461-5 ${docCategory} document.
 Synthesize concrete, highly detailed, professional design PARAGRAPH items for Section ${sectionNumber}: "${sectionTitle}".
 
-Generate 1 to 2 comprehensive, technical PARAGRAPH items detailing the architectural decisions, operational concepts, safety/security mechanisms, or reference baselines for this section based on the project system context.
-Every paragraph MUST have a meaningful, specific title (e.g., 'Sistem Kimlik Bilgileri ve Sürüm Kapsamı', 'Doküman Yapısı ve Kullanım Amacı'). NEVER output generic titles like 'Derived Design Description' or 'Scope'.
+Generate 1 to 2 comprehensive, technical PARAGRAPH items detailing the architectural decisions, operational concepts, safety/security mechanisms, or interface specifications for this section based on the project system context and document summary.
+Every paragraph MUST have a meaningful, specific title (e.g., 'Sistem Kimlik Bilgileri ve Sürüm Kapsamı', 'Arayüz Detaylı Özellikleri ve Veri Sözlüğü'). NEVER output generic titles like 'Derived Design Description' or 'Scope'.
 `;
 
   if (context.language) prompt += `\nDOCUMENT LANGUAGE: ${context.language}`;
   if (context.projectAiContext) prompt += `\nSYSTEM CONTEXT:\n${context.projectAiContext}`;
-  if (context.documentTitle) prompt += `\nSOURCE DOCUMENT: "${context.documentTitle}"`;
+  if (context.documentSummary) prompt += `\nSOURCE DOCUMENT ARCHITECTURAL SUMMARY:\n${context.documentSummary}`;
+  if (context.documentTitle) prompt += `\nSOURCE DOCUMENT TITLE: "${context.documentTitle}"`;
 
   if (context.glossary && context.glossary.length > 0) {
     const glossaryLines = context.glossary.slice(0, 20).map(g => `- ${g.term}: ${g.definition}`).join("\n");
@@ -260,10 +269,18 @@ Every paragraph MUST have a meaningful, specific title (e.g., 'Sistem Kimlik Bil
     prompt += `\nSECTION 3.2 GUIDELINES: Detail the system operational concept decisions, operational modes, execution lifecycle, user/operator interactions, event-driven state transitions, and session recovery/replay capabilities.`;
   } else if (sectionNumber === "3.3") {
     prompt += `\nSECTION 3.3 GUIDELINES: Detail the system safety, security, and privacy decisions: safety interlocks, authentication mechanisms, role-based access controls (RBAC), data privacy boundaries, and fail-safe recovery procedures.`;
+  } else if (sectionNumber === "4.3") {
+    prompt += `\nSECTION 4.3 GUIDELINES: Provide a Mermaid data flow diagram AND a Markdown System Interface Summary Table listing all external and internal interfaces, source/target subsystems, protocol buses, and data exchanged. Title: 'Sistem Arayüz Tasarımı ve Veri Akış Mimarisi'.
+Markdown Table format:
+| Interface ID | Source Subsystem / HWCI | Target Subsystem / CSCI | Protocol / Transport | Data Exchanged & Purpose |
+| :--- | :--- | :--- | :--- | :--- |`;
   } else if (sectionNumber === "5.1") {
     prompt += `\nSECTION 5.1 GUIDELINES: Provide detailed design overview of component responsibilities, software module encapsulation, hardware interfacing, and internal processing logic.`;
   } else if (sectionNumber === "5.3") {
-    prompt += `\nSECTION 5.3 GUIDELINES: Provide detailed interface specifications, payload message structures, signal definitions, and Markdown data dictionary tables.`;
+    prompt += `\nSECTION 5.3 GUIDELINES: Provide detailed Interface Data Dictionary & Signal Specification Markdown tables listing all messages, signals, payload fields, subfield structures, update rates, and parent SSS requirement IDs. Title: 'Arayüz Detaylı Özellikleri ve Veri Sözlüğü'.
+Markdown Table format:
+| Signal / Data ID | Signal Name | Data Type & Range | Subfields / Payload Structure | Rate / Latency | Upstream SSS Reqs |
+| :--- | :--- | :--- | :--- | :--- | :--- |`;
   } else if (sectionNumber === "5.4") {
     prompt += `\nSECTION 5.4 GUIDELINES: Detail resource allocation & performance budgets: CPU core utilization, memory budgets, network bandwidth limits, and processing performance margins as Markdown tables.`;
   } else if (sectionNumber.startsWith("6")) {
@@ -274,7 +291,7 @@ Every paragraph MUST have a meaningful, specific title (e.g., 'Sistem Kimlik Bil
 - Category MUST be 'PARAGRAPH'.
 - targetSectionNumber MUST be '${sectionNumber}'.
 - Title MUST be specific and meaningful (e.g. 'Sistem Genel Mimarisi ve Amacı'). NEVER use 'Derived Design Description' or repeat section names.
-- Content MUST be detailed, concrete, professional engineering prose. Do NOT use generic placeholder text.`;
+- Content MUST be detailed, concrete, professional engineering prose (with Markdown tables or diagrams where helpful). Do NOT use generic placeholder text.`;
 
   try {
     const result = await generateObject({

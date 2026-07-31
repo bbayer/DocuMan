@@ -1,7 +1,7 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { generateObject } from "ai";
 import { z } from "zod";
-import { getSectionsForCategory, type SectionTemplate } from "@/lib/standards/j-std-016";
+import { getSectionsForCategory } from "@/lib/standards/j-std-016";
 
 // ─── Provider / Model (shared with derivative-generator) ─────────
 
@@ -20,9 +20,21 @@ function getModel() {
 
 // ─── Output types ────────────────────────────────────────────────
 
+export interface SystemFunctionSummary {
+  functionId: string;
+  functionTitle: string;
+  upstreamRequirementIds: string[];
+  description: string;
+  inputs: string[];
+  outputs: string[];
+}
+
 export interface DocumentAnalysis {
   /** Detected document language (ISO 639-1 code: "tr", "en", etc.) */
   language: string;
+
+  /** Quick 2-3 paragraph summary of the source document and system capabilities */
+  documentSummary: string;
 
   /** Extracted terminology: canonical term → definition + aliases */
   glossary: { term: string; definition: string; aliases: string[] }[];
@@ -35,6 +47,9 @@ export interface DocumentAnalysis {
 
   /** System boundaries and interfaces identified */
   interfaces: string[];
+
+  /** Synthesized granular system functions grouping upstream requirements (for SSDD Section 5.2) */
+  systemFunctions?: SystemFunctionSummary[];
 
   /** Language-specific validation dictionary (used for deterministic regex checks) */
   validationDictionary: {
@@ -49,6 +64,8 @@ export interface DocumentAnalysis {
 
 const DocumentAnalysisSchema = z.object({
   language: z.string().describe("ISO 639-1 language code of the source document, e.g. 'tr', 'en', 'de'"),
+
+  documentSummary: z.string().describe("High-level 2-3 paragraph executive architectural summary of the source document purpose, domain, and core capabilities"),
 
   glossary: z.array(z.object({
     term: z.string().describe("The canonical/preferred term"),
@@ -65,6 +82,15 @@ const DocumentAnalysisSchema = z.object({
   themes: z.array(z.string()).describe("Cross-cutting themes and constraints that apply to multiple requirements"),
 
   interfaces: z.array(z.string()).describe("External systems, protocols, and data formats mentioned in the document"),
+
+  systemFunctions: z.array(z.object({
+    functionId: z.string().describe("Function ID e.g. Fn-001, Fn-002, Fn-003..."),
+    functionTitle: z.string().describe("Specific, concrete title of the System Function"),
+    upstreamRequirementIds: z.array(z.string()).describe("List of 1 to 3 closely related parent Requirement Reference IDs (e.g. SSS-001, SSS-002) combined into this function"),
+    description: z.string().describe("Detailed functional description of purpose, behavior, algorithm, and operation"),
+    inputs: z.array(z.string()).describe("List of inputs with parameter name, purpose, and subfields"),
+    outputs: z.array(z.string()).describe("List of outputs with data name, purpose, and subfields"),
+  })).optional().describe("Granular system functions joining 1-3 closely related upstream requirements for Section 5.2 Functional Architecture"),
 
   validationDictionary: z.object({
     ambiguousTerms: z.array(z.string()).describe("Vague/imprecise terms that should NOT appear in requirements in this language"),
@@ -83,22 +109,16 @@ interface RequirementSummary {
   content: string;
 }
 
-/**
- * Compress requirements for the analysis prompt.
- * If total text exceeds 50K chars, truncate each requirement's content.
- */
 function prepareInput(requirements: RequirementSummary[]): string {
   const MAX_TOTAL_CHARS = 50_000;
   const MAX_CONTENT_CHARS = 200;
 
-  // First pass: full content
   let lines = requirements.map((r) =>
     `[${r.category}] ${r.itemNumber} | ${r.title || ""} | ${r.content}`
   );
 
   let total = lines.join("\n").length;
 
-  // If too large, truncate content
   if (total > MAX_TOTAL_CHARS) {
     lines = requirements.map((r) => {
       const content = r.content.length > MAX_CONTENT_CHARS
@@ -113,11 +133,6 @@ function prepareInput(requirements: RequirementSummary[]): string {
 
 // ─── Main analysis function ──────────────────────────────────────
 
-/**
- * Analyze a source document in a single LLM call before chunked generation.
- * Extracts glossary, outline, themes, interfaces, and a language-specific
- * validation dictionary for deterministic quality checks.
- */
 export async function analyzeSourceDocument(
   documentTitle: string,
   requirements: RequirementSummary[],
@@ -131,10 +146,9 @@ export async function analyzeSourceDocument(
 
   const compressedInput = prepareInput(requirements);
 
-  // ── Build prompt ────────────────────────────────────────
-  let prompt = `You are an expert Systems Engineer and Requirements Analyst specializing in IEEE 12207 / J-STD-016 standards.
+  let prompt = `You are an expert Systems Engineer and Chief System Architect specializing in IEEE 12207 / J-STD-016 and MIL-STD-498 standards.
 
-Analyze the following source document and produce a structured analysis.`;
+Analyze the following source document requirements and produce a comprehensive document analysis.`;
 
   if (projectAiContext) {
     prompt += `\n\nPROJECT CONTEXT (provided by the project owner):\n${projectAiContext}`;
@@ -148,7 +162,6 @@ TARGET DOCUMENT TYPE: ${docCategory}`;
 ${sectionReference}`;
   }
 
-  // Turkish-specific conventions
   prompt += `\n\nLANGUAGE-SPECIFIC CONVENTIONS:
 - If the document is in Turkish:
   - CSCI must be translated as "YKE" (Yazılım Konfigürasyon Elemanı), NOT "BYKÖ"
@@ -159,25 +172,19 @@ ${sectionReference}`;
 
   prompt += `\n\nINSTRUCTIONS:
 1. DETECT the language of the source document.
-2. EXTRACT domain-specific terminology. For each term, identify the canonical form, a brief definition, and any aliases/variants found in the text.
-3. MAP the source document to the J-STD-016 section structure for ${docCategory}. Translate section titles to the detected language.
-4. IDENTIFY cross-cutting themes and constraints that apply across multiple requirements (safety, performance, security, etc.).
-5. IDENTIFY external system interfaces, protocols, and data formats.
-${
-  docCategory === "SSDD"
-    ? `6. FOR SSDD (System/Subsystem Design Description — System-Level Architecture):
-   - Identify candidate system components: Subsystems, HWCIs (Hardware), CSCIs (Software), and Manual Operations.
-   - Identify system interface buses, protocols, and data exchange structures for Markdown matrix formatting.
-   - Identify system execution concepts, state/mode controls, and resource allocations (processing/memory budgets).`
-    : docCategory === "SDD"
-    ? `6. FOR SDD (Software Design Description — CSCI/Software-Level Design):
-   - Identify candidate software modules, components, and software units (e.g. Controllers, Managers, Processing Engines).
-   - Identify key data structures, data dictionary tables, and parameter schemas that will be specified in Markdown format.`
-    : ""
-}
-7. GENERATE a validation dictionary for the detected language:
-   - ambiguousTerms: vague/imprecise terms that should NOT appear in formal requirements
-   - obligationShall/Should/May: verb forms for mandatory/recommended/optional requirements
+2. GENERATE a 2-3 paragraph executive document summary describing the overall system purpose, operational domain, and core capabilities.
+3. EXTRACT domain-specific terminology (canonical form, definition, aliases).
+4. MAP the target document outline for ${docCategory}.
+5. IDENTIFY cross-cutting themes and system interfaces.
+6. GRANULAR SYSTEM FUNCTIONS SYNTHESIS (DO NOT OVER-GROUP):
+   Synthesize concrete, granular System Functions (Fn-001, Fn-002, Fn-003...).
+   - DO NOT lump requirements into overly broad macro-functions.
+   - Group ONLY closely related requirements (at most 1–3 parent requirements per function).
+   - If a requirement specifies a distinct capability (e.g. thermal camera stream, turret motor control, NATS telemetry broadcast), keep it as a dedicated System Function.
+   - Generate as many distinct Fn-00X functions as needed to cover all capabilities.
+   - For each function specify: functionId, functionTitle, upstreamRequirementIds, description, bulleted inputs, and bulleted outputs with subfields.
+7. INTERFACE DICTIONARY & SIGNALS:
+   Extract all system interface protocols, data buses, signals, and message schemas for Sections 4.3 and 5.3 interface tables.
 
 SOURCE DOCUMENT CONTENT:
 ${compressedInput}`;
@@ -192,9 +199,9 @@ ${compressedInput}`;
     return result.object;
   } catch (error) {
     console.error("Document analysis failed:", error);
-    // Return minimal fallback so generation can still proceed
     return {
       language: "en",
+      documentSummary: `This document contains the requirements specification for ${documentTitle}.`,
       glossary: [],
       outline: sectionTemplates.map((s) => ({
         sectionNumber: s.section,

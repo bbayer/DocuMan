@@ -167,27 +167,79 @@ export async function POST(req: NextRequest) {
       const previouslyGenerated: string[] = [];
       const sectionBucket = new Map<string, DerivedItemOutput[]>();
 
+      const derivationContext: DerivationContext = {
+        projectAiContext: project?.aiContext || undefined,
+        documentTitle: parentDocument?.title || undefined,
+        documentSummary: analysis.documentSummary,
+        extraInstructions: extraInstructions || undefined,
+        reasoningEffort: reasoningEffort || undefined,
+        language: analysis.language,
+        glossary: dedupedGlossary,
+        targetOutline: targetSections,
+        themes: analysis.themes.length > 0 ? analysis.themes : undefined,
+        systemFunctions: analysis.systemFunctions,
+      };
+
+      // 2. Pre-Pass Architectural Synthesis (Sections 1.1, 1.2, 1.3, 2, 3.1, 3.2, 3.3, 4.3, 5.3)
+      const prioritySections = ["1.1", "1.2", "1.3", "2", "3.1", "3.2", "3.3", "4.3", "5.3"];
+      for (const secNum of prioritySections) {
+        const sec = targetSections.find((s) => s.sectionNumber === secNum);
+        if (sec) {
+          await send({
+            progress: 20,
+            status: `🏗️ Pre-synthesizing architectural section ${sec.sectionNumber} (${sec.sectionTitle})...`,
+          });
+          const synthesized = await synthesizeSectionParagraphs(
+            sec.sectionNumber,
+            sec.sectionTitle,
+            docCategory,
+            derivationContext
+          );
+          sectionBucket.set(sec.sectionNumber, synthesized);
+        }
+      }
+
+      // 2.2 Populate Section 5.2 Functional Architecture from Grouped System Functions Registry
+      if (docCategory === "SSDD" && analysis.systemFunctions && analysis.systemFunctions.length > 0) {
+        const sec52Tables: DerivedItemOutput[] = analysis.systemFunctions.map((fn) => {
+          const upstreamRefs = fn.upstreamRequirementIds.length > 0 ? fn.upstreamRequirementIds.join(", ") : "SSS-001";
+          const formattedInputs = fn.inputs.map((i) => i.startsWith("-") ? i : `- **${i}**`).join("<br/>");
+          const formattedOutputs = fn.outputs.map((o) => o.startsWith("-") ? o : `- **${o}**`).join("<br/>");
+
+          const tableMarkdown = `| Field | Details |
+| :--- | :--- |
+| **Function Name** | **${fn.functionId}: ${fn.functionTitle}** |
+| **Function Description** | ${fn.description} |
+| **Inputs / Outputs** | **Inputs:**<br/>${formattedInputs}<br/><br/>**Outputs:**<br/>${formattedOutputs} |
+| **Upstream SSS Requirements** | ${upstreamRefs} |`;
+
+          return {
+            parentRequirementId: fn.upstreamRequirementIds[0] || "",
+            targetSectionNumber: "5.2",
+            category: "PARAGRAPH",
+            title: `${fn.functionId} ${fn.functionTitle} Fonksiyonel Detayı`,
+            content: tableMarkdown,
+          };
+        });
+        const existing52 = sectionBucket.get("5.2") || [];
+        sectionBucket.set("5.2", [...sec52Tables, ...existing52]);
+      }
+
+      // 2.3 Batch parent requirements into chunks for detailed breakdown
       for (let cIdx = 0; cIdx < parentChunks.length; cIdx++) {
         const chunk = parentChunks[cIdx];
-        const pct = Math.floor(20 + ((cIdx / parentChunks.length) * 70));
+        const pct = Math.floor(35 + ((cIdx / parentChunks.length) * 45));
         await send({
           progress: pct,
           status: `⚙️ Generating design elements... (chunk ${cIdx + 1}/${parentChunks.length})`,
         });
 
-        const derivationContext: DerivationContext = {
-          projectAiContext: project?.aiContext || undefined,
-          documentTitle: parentDocument?.title || undefined,
-          extraInstructions: extraInstructions || undefined,
-          reasoningEffort: reasoningEffort || undefined,
-          language: analysis.language,
-          glossary: dedupedGlossary,
-          targetOutline: targetSections,
-          themes: analysis.themes.length > 0 ? analysis.themes : undefined,
+        const chunkContext: DerivationContext = {
+          ...derivationContext,
           previouslyGenerated: previouslyGenerated.slice(-30),
         };
 
-        const derivedItems = await breakDownRequirements(chunk, docCategory, derivationContext);
+        const derivedItems = await breakDownRequirements(chunk, docCategory, chunkContext);
 
         for (const item of derivedItems) {
           // Resolve target section number — remap parent container sections (1, 3, 4, 5) to leaf sub-sections
@@ -229,16 +281,6 @@ export async function POST(req: NextRequest) {
             progress: 85,
             status: `✍️ Synthesizing section ${sec.sectionNumber} (${sec.sectionTitle})...`,
           });
-          const derivationContext: DerivationContext = {
-            projectAiContext: project?.aiContext || undefined,
-            documentTitle: parentDocument?.title || undefined,
-            extraInstructions: extraInstructions || undefined,
-            reasoningEffort: reasoningEffort || undefined,
-            language: analysis.language,
-            glossary: dedupedGlossary,
-            targetOutline: targetSections,
-            themes: analysis.themes.length > 0 ? analysis.themes : undefined,
-          };
           const synthesized = await synthesizeSectionParagraphs(
             sec.sectionNumber,
             sec.sectionTitle,
