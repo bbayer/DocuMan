@@ -60,6 +60,7 @@ export function ProjectDetail({ project }: { project: Project }) {
   const [deriveCategory, setDeriveCategory] = useState("SRS");
   const [deriveTitle, setDeriveTitle] = useState("");
   const [extraInstructions, setExtraInstructions] = useState("");
+  const [promptMode, setPromptMode] = useState<"ENHANCE" | "OVERRIDE">("ENHANCE");
   const [reasoningEffort, setReasoningEffort] = useState<"none" | "low" | "medium" | "high">("medium");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -103,6 +104,7 @@ export function ProjectDetail({ project }: { project: Project }) {
           title: deriveTitle.trim(),
           docCategory: deriveCategory,
           extraInstructions: extraInstructions.trim() || undefined,
+          promptMode,
           reasoningEffort,
         }),
       });
@@ -538,6 +540,24 @@ export function ProjectDetail({ project }: { project: Project }) {
                   onChange={(e) => setDeriveTitle(e.target.value)}
                   placeholder="e.g. Flight Control System SRS"
                 />
+              </div>
+              <div className="input-group">
+                <label className="input-label" htmlFor="derive-prompt-mode">
+                  Prompt Generation Mode
+                </label>
+                <p style={{ fontSize: "var(--font-size-sm)", color: "var(--color-text-secondary)", marginBottom: "var(--space-2)", marginTop: 0 }}>
+                  Controls how extra instructions interact with standard J-STD-016 / MIL-STD-498 templates.
+                </p>
+                <select
+                  className="select"
+                  id="derive-prompt-mode"
+                  value={promptMode}
+                  disabled={loading}
+                  onChange={(e) => setPromptMode(e.target.value as "ENHANCE" | "OVERRIDE")}
+                >
+                  <option value="ENHANCE">⚡ Standard J-STD-016 Mode (Enhance — append extra guidelines to default template)</option>
+                  <option value="OVERRIDE">🎯 Custom Override Mode (Override — user instructions take priority for custom function grouping & rules)</option>
+                </select>
               </div>
               <div className="input-group">
                 <label className="input-label" htmlFor="derive-extra-instructions">

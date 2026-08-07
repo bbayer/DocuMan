@@ -57,6 +57,8 @@ export interface DerivationContext {
   systemFunctions?: SystemFunctionSummary[];
   /** Running summary of previously generated requirement titles (for dedup) */
   previouslyGenerated?: string[];
+  /** Prompt mode: ENHANCE appends rules, OVERRIDE prioritizes user rules above default template rules */
+  promptMode?: "ENHANCE" | "OVERRIDE";
 }
 
 // ─── Quality constraints appended to every prompt ────────
@@ -91,6 +93,15 @@ export async function breakDownRequirements(
   if (context.language) {
     systemContext += `\n\nDOCUMENT LANGUAGE: ${context.language}`;
     systemContext += `\nGenerate all item titles and text content in this language.`;
+  }
+
+  // User-provided extra instructions (Top Priority if present/override)
+  if (context.extraInstructions?.trim()) {
+    systemContext += `\n\nUSER EXTRA INSTRUCTIONS & GENERATION DIRECTIVES (TOP PRIORITY):\n${context.extraInstructions.trim()}`;
+    if (context.promptMode === "OVERRIDE") {
+      systemContext += `\n\n⚠️ CRITICAL OVERRIDE DIRECTIVE:
+The user instructions above take TOP PRECEDENCE. If the user specified custom function groupings (e.g. group requirements into specific functions/modules), custom section outlines, or custom breakdown rules, follow the user's instructions over default J-STD-016 template rules where they conflict.`;
+    }
   }
 
   // Project-level AI context
@@ -181,11 +192,6 @@ export async function breakDownRequirements(
 
   // Quality constraints
   systemContext += QUALITY_CONSTRAINTS;
-
-  // User-provided extra instructions
-  if (context.extraInstructions) {
-    systemContext += `\n\nAdditional Instructions (provided by the user):\n${context.extraInstructions}`;
-  }
 
   // ── Construct input payload ──────────────────────────
   const inputList = parentChunk.map((req) => {

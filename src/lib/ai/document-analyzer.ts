@@ -138,6 +138,8 @@ export async function analyzeSourceDocument(
   requirements: RequirementSummary[],
   docCategory: string,
   projectAiContext?: string,
+  extraInstructions?: string,
+  promptMode: "ENHANCE" | "OVERRIDE" = "ENHANCE",
 ): Promise<DocumentAnalysis> {
   const sectionTemplates = getSectionsForCategory(docCategory);
   const sectionReference = sectionTemplates.length > 0
@@ -152,6 +154,14 @@ Analyze the following source document requirements and produce a comprehensive d
 
   if (projectAiContext) {
     prompt += `\n\nPROJECT CONTEXT (provided by the project owner):\n${projectAiContext}`;
+  }
+
+  if (extraInstructions?.trim()) {
+    prompt += `\n\nUSER EXTRA INSTRUCTIONS & GENERATION DIRECTIVES:\n${extraInstructions.trim()}`;
+    if (promptMode === "OVERRIDE") {
+      prompt += `\n\n⚠️ CRITICAL USER OVERRIDE MODE ENABLED:
+The user instructions above take TOP PRIORITY. If the user specified custom function/component groupings (e.g., group requirements into specific software functions/modules like Fn-001 Telemetry, Fn-002 FlightControl), custom section structures, or custom breakdown rules, synthesize the target outline and system functions registry strictly following the user's directives rather than default templates.`;
+    }
   }
 
   prompt += `\n\nSOURCE DOCUMENT: "${documentTitle}"
@@ -174,14 +184,11 @@ ${sectionReference}`;
 1. DETECT the language of the source document.
 2. GENERATE a 2-3 paragraph executive document summary describing the overall system purpose, operational domain, and core capabilities.
 3. EXTRACT domain-specific terminology (canonical form, definition, aliases).
-4. MAP the target document outline for ${docCategory}.
+4. MAP the target document outline for ${docCategory}. (If user provided custom section directives, honor them).
 5. IDENTIFY cross-cutting themes and system interfaces.
-6. GRANULAR SYSTEM FUNCTIONS SYNTHESIS (DO NOT OVER-GROUP):
-   Synthesize concrete, granular System Functions (Fn-001, Fn-002, Fn-003...).
-   - DO NOT lump requirements into overly broad macro-functions.
-   - Group ONLY closely related requirements (at most 1–3 parent requirements per function).
-   - If a requirement specifies a distinct capability (e.g. thermal camera stream, turret motor control, NATS telemetry broadcast), keep it as a dedicated System Function.
-   - Generate as many distinct Fn-00X functions as needed to cover all capabilities.
+6. GRANULAR SYSTEM FUNCTIONS SYNTHESIS:
+   Synthesize concrete System Functions (Fn-001, Fn-002, Fn-003...).
+   - ${promptMode === "OVERRIDE" && extraInstructions?.trim() ? "Strictly follow any custom function/module groupings requested by the user." : "Group ONLY closely related requirements. Do NOT lump requirements into overly broad macro-functions."}
    - For each function specify: functionId, functionTitle, upstreamRequirementIds, description, bulleted inputs, and bulleted outputs with subfields.
 7. INTERFACE DICTIONARY & SIGNALS:
    Extract all system interface protocols, data buses, signals, and message schemas for Sections 4.3 and 5.3 interface tables.

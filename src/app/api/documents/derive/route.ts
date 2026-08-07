@@ -6,7 +6,7 @@ import { validateRequirements, mergeWithDefaults, type RequirementInput } from "
 import { getSectionsForCategory } from "@/lib/standards/j-std-016";
 
 export async function POST(req: NextRequest) {
-  const { projectId, parentDocumentId, title, docCategory, extraInstructions, reasoningEffort } = await req.json();
+  const { projectId, parentDocumentId, title, docCategory, extraInstructions, reasoningEffort, promptMode = "ENHANCE" } = await req.json();
 
   if (!projectId || !parentDocumentId || !title || !docCategory) {
     return new Response(JSON.stringify({ error: "Missing parameters" }), { status: 400 });
@@ -76,6 +76,8 @@ export async function POST(req: NextRequest) {
         analysisInput,
         docCategory,
         project?.aiContext || undefined,
+        extraInstructions || undefined,
+        promptMode || "ENHANCE",
       );
 
       await send({ progress: 8, status: "📊 Extracting terminology glossary..." });
@@ -108,6 +110,7 @@ export async function POST(req: NextRequest) {
 
       // Save analysis metadata on the document
       const generationMeta = {
+        promptMode: promptMode || "ENHANCE",
         analysis: {
           language: analysis.language,
           glossaryCount: analysis.glossary.length,
@@ -172,6 +175,7 @@ export async function POST(req: NextRequest) {
         documentTitle: parentDocument?.title || undefined,
         documentSummary: analysis.documentSummary,
         extraInstructions: extraInstructions || undefined,
+        promptMode: promptMode || "ENHANCE",
         reasoningEffort: reasoningEffort || undefined,
         language: analysis.language,
         glossary: dedupedGlossary,
